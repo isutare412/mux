@@ -61,3 +61,13 @@ func TestCurrentContext_NonIntegerWindowIndex(t *testing.T) {
 		}
 	})
 }
+
+func TestCurrentContext_EmptySessionName(t *testing.T) {
+	withMock(t, func(m *mockRunner) {
+		t.Setenv("TMUX_PANE", "%2")
+		m.OnOutput([]byte("|3\n"), nil, "tmux", "display-message", "-t", "%2", "-p", currentContextFormat)
+		if _, _, ok := CurrentContext(); ok {
+			t.Error("expected ok=false when session name is empty")
+		}
+	})
+}
