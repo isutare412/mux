@@ -81,7 +81,7 @@ func TestFormatPaneRowWithClaude(t *testing.T) {
 		Recap: "DP-3733 done",
 		Since: time.Now().Add(-3 * time.Minute),
 	}
-	row := formatPaneRow("sess", p, false, 80, &st)
+	row := formatPaneRow(p, false, 80, &st)
 	if !strings.Contains(stripANSI(row), "DP-3733 done") {
 		t.Errorf("pane row missing recap: %q", stripANSI(row))
 	}

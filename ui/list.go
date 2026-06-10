@@ -75,7 +75,7 @@ func formatItemRow(it listItem, selected bool, width int, t *treeState) string {
 		expanded := t.isWindowExpanded(it.session.Name, it.window.Index)
 		return formatWindowRow(it.session.Name, it.window, expanded, selected, width, t)
 	case itemPane:
-		return formatPaneRow(it.session.Name, it.pane, selected, width, t)
+		return formatPaneRow(it.pane, selected, width, t)
 	default:
 		expanded := t.isSessionExpanded(it.session.Name)
 		return formatSessionRow(*it.session, expanded, selected, width)
@@ -163,7 +163,7 @@ func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool
 		Render(row)
 }
 
-func formatPaneRow(sessionName string, p *tmux.Pane, selected bool, width int, t *treeState) string {
+func formatPaneRow(p *tmux.Pane, selected bool, width int, t *treeState) string {
 	marker := " "
 	if p.Active {
 		marker = "*"
