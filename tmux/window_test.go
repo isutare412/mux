@@ -197,6 +197,28 @@ func TestListPanesWithMock(t *testing.T) {
 	})
 }
 
+func TestListPanesResolvesCommand(t *testing.T) {
+	withMock(t, func(m *mockRunner) {
+		// claude reports its version string as pane_current_command.
+		out := "0|2.1.170|1|120|40|500"
+		m.OnOutput([]byte(out), nil, "tmux", "list-panes", "-t", "s:0", "-F", paneListFormat)
+		// resolveCommand scans children of the pane PID and finds claude.
+		m.OnOutput([]byte("600\n"), nil, "pgrep", "-P", "500")
+		m.OnOutput([]byte("/usr/local/bin/claude\n"), nil, "ps", "-o", "args=", "-p", "600")
+
+		panes, err := ListPanes("s", 0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(panes) != 1 {
+			t.Fatalf("expected 1 pane, got %d", len(panes))
+		}
+		if panes[0].Command != "claude" {
+			t.Errorf("Command = %q, want claude (resolved from version string)", panes[0].Command)
+		}
+	})
+}
+
 func TestRenameWindowWithMock(t *testing.T) {
 	withMock(t, func(m *mockRunner) {
 		if err := RenameWindow("my-session", 2, "logs"); err != nil {

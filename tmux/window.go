@@ -67,6 +67,10 @@ func ListPanes(sessionName string, windowIndex int) ([]Pane, error) {
 		if err != nil {
 			continue
 		}
+		// Resolve the logical command (e.g. claude reports its version string
+		// as pane_current_command) by scanning child processes, mirroring how
+		// ListSessions resolves a session's active command.
+		p.Command = resolveCommand(p.PID, p.Command)
 		panes = append(panes, p)
 	}
 
