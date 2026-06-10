@@ -36,6 +36,7 @@ type treeState struct {
 	expandedWindow  map[string]map[int]bool
 	windowsCache    map[string][]tmux.Window
 	panesCache      map[paneCacheKey][]tmux.Pane
+	seenSession     map[string]bool // sessions already auto-expanded once
 }
 
 func newTreeState() treeState {
@@ -44,7 +45,25 @@ func newTreeState() treeState {
 		expandedWindow:  make(map[string]map[int]bool),
 		windowsCache:    make(map[string][]tmux.Window),
 		panesCache:      make(map[paneCacheKey][]tmux.Pane),
+		seenSession:     make(map[string]bool),
 	}
+}
+
+// expandNewSessions auto-expands every session it hasn't seen before and
+// returns their names. Sessions are only auto-expanded the first time they
+// appear, so a session the user later collapses stays collapsed across the
+// periodic session-list refresh.
+func (t *treeState) expandNewSessions(sessions []tmux.Session) []string {
+	var expanded []string
+	for _, s := range sessions {
+		if t.seenSession[s.Name] {
+			continue
+		}
+		t.seenSession[s.Name] = true
+		t.setSessionExpanded(s.Name, true)
+		expanded = append(expanded, s.Name)
+	}
+	return expanded
 }
 
 // isSessionExpanded reports whether the session row is expanded.
@@ -102,6 +121,11 @@ func (t *treeState) pruneCaches(sessions []tmux.Session) {
 			delete(t.expandedSession, name)
 			delete(t.expandedWindow, name)
 			delete(t.windowsCache, name)
+		}
+	}
+	for name := range t.seenSession {
+		if _, ok := live[name]; !ok {
+			delete(t.seenSession, name)
 		}
 	}
 	for key := range t.panesCache {

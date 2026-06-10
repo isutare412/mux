@@ -178,6 +178,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.sessions != nil {
 			m.sessions = msg.sessions
 			m.tree.pruneCaches(m.sessions)
+			// Auto-expand sessions the first time they appear so the tree
+			// opens fully on startup (and newly created sessions open too).
+			var cmds []tea.Cmd
+			for _, name := range m.tree.expandNewSessions(m.sessions) {
+				cmds = append(cmds, loadWindows(name))
+			}
 			m.applyFilter()
 			if m.focusSession != "" {
 				for i, it := range m.items {
@@ -188,6 +194,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.focusSession = ""
 			}
+			return m, tea.Batch(cmds...)
 		}
 		return m, nil
 

@@ -139,6 +139,54 @@ func TestPruneCaches(t *testing.T) {
 	}
 }
 
+func TestExpandNewSessions_ExpandsUnseen(t *testing.T) {
+	state := newTreeState()
+	sessions := []tmux.Session{{Name: "a"}, {Name: "b"}}
+
+	expanded := state.expandNewSessions(sessions)
+
+	if len(expanded) != 2 {
+		t.Fatalf("expected 2 newly-expanded sessions, got %d (%v)", len(expanded), expanded)
+	}
+	if !state.isSessionExpanded("a") || !state.isSessionExpanded("b") {
+		t.Error("both sessions should be expanded")
+	}
+}
+
+func TestExpandNewSessions_DoesNotReexpandAfterCollapse(t *testing.T) {
+	// A session auto-expanded once and then collapsed by the user must stay
+	// collapsed when the session list refreshes (expandNewSessions runs again).
+	state := newTreeState()
+	sessions := []tmux.Session{{Name: "a"}}
+
+	state.expandNewSessions(sessions)        // first appearance: auto-expands
+	state.setSessionExpanded("a", false)     // user collapses it
+
+	expanded := state.expandNewSessions(sessions) // periodic refresh
+
+	if len(expanded) != 0 {
+		t.Errorf("expected no re-expansion, got %v", expanded)
+	}
+	if state.isSessionExpanded("a") {
+		t.Error("session collapsed by the user should stay collapsed across refresh")
+	}
+}
+
+func TestExpandNewSessions_ReexpandsAfterPrune(t *testing.T) {
+	// A session that disappears and later returns should auto-expand again.
+	state := newTreeState()
+	first := []tmux.Session{{Name: "a"}}
+
+	state.expandNewSessions(first)
+	state.pruneCaches([]tmux.Session{}) // session "a" died
+
+	expanded := state.expandNewSessions(first) // "a" reappears
+
+	if len(expanded) != 1 || expanded[0] != "a" {
+		t.Errorf("expected reappeared session to re-expand, got %v", expanded)
+	}
+}
+
 func TestSetWindowExpanded_Toggle(t *testing.T) {
 	state := newTreeState()
 	state.setWindowExpanded("a", 0, true)
