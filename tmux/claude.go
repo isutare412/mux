@@ -242,6 +242,41 @@ func tailBytes(path string, n int64) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
+// transcriptAwaitingTool reports whether the transcript tail ends with an
+// assistant tool_use that has no following user tool_result — i.e. a tool call
+// is outstanding. Walking the tail in order, each assistant tool_use sets the
+// flag and each user tool_result clears it, so the final value reflects the
+// last unpaired tool_use.
+func transcriptAwaitingTool(path string) (bool, error) {
+	data, err := tailBytes(path, recapTailBytes)
+	if err != nil {
+		return false, err
+	}
+	awaiting := false
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		var m struct {
+			Type    string `json:"type"`
+			Message struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(line, &m) != nil {
+			continue
+		}
+		switch m.Type {
+		case "assistant":
+			if bytes.Contains(m.Message.Content, []byte(`"tool_use"`)) {
+				awaiting = true
+			}
+		case "user":
+			if bytes.Contains(m.Message.Content, []byte(`"tool_result"`)) {
+				awaiting = false
+			}
+		}
+	}
+	return awaiting, nil
+}
+
 // loadRecap returns the most recent ai-title in the transcript at path, or ""
 // if none is present in the scanned tail.
 func loadRecap(path string) (string, error) {

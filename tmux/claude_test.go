@@ -183,3 +183,45 @@ func joinLines(lines []string) string {
 	}
 	return out
 }
+
+func TestTranscriptAwaitingTool(t *testing.T) {
+	dir := t.TempDir()
+
+	write := func(name string, lines []string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(joinLines(lines)), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	pending := write("pending.jsonl", []string{
+		`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"go"}]}}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash"}]}}`,
+	})
+	resolved := write("resolved.jsonl", []string{
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash"}]}}`,
+		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result"}]}}`,
+	})
+	idle := write("idle.jsonl", []string{
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}`,
+	})
+
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{pending, true},
+		{resolved, false},
+		{idle, false},
+	}
+	for _, c := range cases {
+		got, err := transcriptAwaitingTool(c.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != c.want {
+			t.Errorf("transcriptAwaitingTool(%s) = %v, want %v", filepath.Base(c.path), got, c.want)
+		}
+	}
+}
