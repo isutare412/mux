@@ -150,6 +150,21 @@ func loadTokenUsage(sessionName string, panePID int) tea.Cmd {
 	}
 }
 
+type claudeInfoLoadedMsg struct {
+	panePID int
+	info    *tmux.ClaudeInfo
+}
+
+func loadClaudeInfo(panePID int) tea.Cmd {
+	return func() tea.Msg {
+		info, err := tmux.LoadClaudeInfo(panePID)
+		if err != nil {
+			return claudeInfoLoadedMsg{panePID: panePID, info: nil}
+		}
+		return claudeInfoLoadedMsg{panePID: panePID, info: info}
+	}
+}
+
 // NewModel returns a new Model with default settings.
 func NewModel() Model {
 	return Model{tree: newTreeState(), focusWindow: -1}
@@ -174,13 +189,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, loadTokenUsage(it.session.Name, it.session.PanePID))
 			}
 		}
-		// Refresh windows/panes for expanded subtrees
+		// Refresh windows for expanded subtrees.
 		for name := range m.tree.expandedSession {
 			cmds = append(cmds, loadWindows(name))
 		}
-		for sessionName, windows := range m.tree.expandedWindow {
-			for windowIdx := range windows {
-				cmds = append(cmds, loadPanes(sessionName, windowIdx))
+		// For every visible window, ensure its panes are loaded (roll-up needs
+		// them even when the window is collapsed), and load Claude info for any
+		// visible Claude pane.
+		seenWindow := make(map[paneCacheKey]struct{})
+		for _, it := range m.items {
+			switch it.kind {
+			case itemWindow:
+				key := paneCacheKey{session: it.session.Name, window: it.window.Index}
+				if _, done := seenWindow[key]; !done {
+					seenWindow[key] = struct{}{}
+					cmds = append(cmds, loadPanes(it.session.Name, it.window.Index))
+				}
+			case itemPane:
+				if it.pane.PID > 0 && tmux.IsAICommand(it.pane.Command) {
+					cmds = append(cmds, loadClaudeInfo(it.pane.PID))
+				}
+			}
+		}
+		// Claude info for panes of visible (possibly collapsed) windows, for roll-up.
+		for key := range seenWindow {
+			for _, p := range m.tree.panesCache[key] {
+				if p.PID > 0 && tmux.IsAICommand(p.Command) {
+					cmds = append(cmds, loadClaudeInfo(p.PID))
+				}
 			}
 		}
 		return m, tea.Batch(cmds...)
@@ -227,6 +263,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tokenUsageLoadedMsg:
 		m.tokenSession = msg.sessionName
 		m.tokenUsage = msg.usage
+		return m, nil
+
+	case claudeInfoLoadedMsg:
+		if msg.info != nil {
+			m.tree.claudeCache[msg.panePID] = *msg.info
+		} else {
+			delete(m.tree.claudeCache, msg.panePID)
+		}
 		return m, nil
 
 	case sessionCreatedMsg:
