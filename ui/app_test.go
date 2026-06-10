@@ -7,7 +7,7 @@ import (
 )
 
 // drive applies a message and returns the updated Model.
-func drive(m Model, msg interface{}) Model {
+func drive(m Model, msg any) Model {
 	next, _ := m.Update(msg)
 	return next.(Model)
 }
@@ -54,12 +54,17 @@ func TestStartupFocusIgnoredWhenNotOk(t *testing.T) {
 	sessions := []tmux.Session{{Name: "mux"}, {Name: "eval"}}
 
 	m = drive(m, sessionsLoadedMsg{sessions: sessions})
+	m.cursor = 1 // user is somewhere other than the top
+
 	m = drive(m, currentContextMsg{ok: false})
 	m = drive(m, windowsLoadedMsg{sessionName: "mux", windows: []tmux.Window{
 		{Index: 0, Name: "nvim", Active: true},
 	}})
 
-	if m.cursor != 0 {
-		t.Fatalf("cursor = %d, want 0 (default) when context not ok", m.cursor)
+	if m.focusSession != "" {
+		t.Errorf("focusSession = %q, want empty (no focus set when ok=false)", m.focusSession)
+	}
+	if m.cursor != 1 {
+		t.Errorf("cursor = %d, want 1 (unchanged when context not ok)", m.cursor)
 	}
 }

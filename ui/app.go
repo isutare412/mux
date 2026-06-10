@@ -58,7 +58,7 @@ type Model struct {
 	filterText       string
 	attachTarget     previewKey // set when we want to attach after quitting (zero value = no attach)
 	focusSession     string // session name to focus cursor on after next load
-	focusWindow      int    // window index to focus within focusSession; -1 = focus the session row
+	focusWindow      int    // window index to focus within focusSession; -1 = session row. Only meaningful when focusSession != "".
 	previewContent string           // cached capture-pane output
 	previewKey     previewKey       // (session, window, pane) the cache belongs to
 	tokenUsage     *tmux.TokenUsage // cached token usage for current AI session
@@ -152,7 +152,7 @@ func loadTokenUsage(sessionName string, panePID int) tea.Cmd {
 
 // NewModel returns a new Model with default settings.
 func NewModel() Model {
-	return Model{tree: newTreeState()}
+	return Model{tree: newTreeState(), focusWindow: -1}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -283,22 +283,26 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "up", "k":
 			m.focusSession = ""
+			m.focusWindow = -1
 			if m.cursor > 0 {
 				m.cursor--
 				return m, m.refreshCurrentPreview()
 			}
 		case "down", "j":
 			m.focusSession = ""
+			m.focusWindow = -1
 			if m.cursor < len(m.items)-1 {
 				m.cursor++
 				return m, m.refreshCurrentPreview()
 			}
 		case "g":
 			m.focusSession = ""
+			m.focusWindow = -1
 			m.cursor = 0
 			return m, m.refreshCurrentPreview()
 		case "G":
 			m.focusSession = ""
+			m.focusWindow = -1
 			if len(m.items) > 0 {
 				m.cursor = len(m.items) - 1
 				return m, m.refreshCurrentPreview()
