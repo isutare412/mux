@@ -29,6 +29,9 @@ func CurrentContext() (session string, window int, ok bool) {
 	if len(parts) < 2 {
 		return "", 0, false
 	}
+	if parts[0] == "" {
+		return "", 0, false
+	}
 
 	idx, err := strconv.Atoi(parts[1])
 	if err != nil {

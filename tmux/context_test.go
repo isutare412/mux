@@ -51,3 +51,13 @@ func TestCurrentContext_MalformedOutput(t *testing.T) {
 		}
 	})
 }
+
+func TestCurrentContext_NonIntegerWindowIndex(t *testing.T) {
+	withMock(t, func(m *mockRunner) {
+		t.Setenv("TMUX_PANE", "%2")
+		m.OnOutput([]byte("mux|abc\n"), nil, "tmux", "display-message", "-t", "%2", "-p", currentContextFormat)
+		if _, _, ok := CurrentContext(); ok {
+			t.Error("expected ok=false on non-integer window index")
+		}
+	})
+}
