@@ -34,4 +34,5 @@ type Pane struct {
 	Active  bool
 	Width   int
 	Height  int
+	PID     int // pane_pid from list-panes
 }

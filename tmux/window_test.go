@@ -78,7 +78,7 @@ func TestParsePaneLine(t *testing.T) {
 	}{
 		{
 			name: "active pane",
-			line: "0|nvim|1|120|40",
+			line: "0|nvim|1|120|40|54321",
 			check: func(t *testing.T, p Pane) {
 				if p.Index != 0 {
 					t.Errorf("Index = %d, want 0", p.Index)
@@ -95,11 +95,14 @@ func TestParsePaneLine(t *testing.T) {
 				if p.Height != 40 {
 					t.Errorf("Height = %d, want 40", p.Height)
 				}
+				if p.PID != 54321 {
+					t.Errorf("PID = %d, want 54321", p.PID)
+				}
 			},
 		},
 		{
 			name: "inactive pane",
-			line: "1|zsh|0|80|24",
+			line: "1|zsh|0|80|24|99",
 			check: func(t *testing.T, p Pane) {
 				if p.Active {
 					t.Error("Active = true, want false")
@@ -178,7 +181,7 @@ func TestListWindowsSortsByIndex(t *testing.T) {
 
 func TestListPanesWithMock(t *testing.T) {
 	withMock(t, func(m *mockRunner) {
-		out := "0|nvim|1|120|40\n1|zsh|0|120|40"
+		out := "0|nvim|1|120|40|11\n1|zsh|0|120|40|22"
 		m.OnOutput([]byte(out), nil, "tmux", "list-panes", "-t", "my-session:2", "-F", paneListFormat)
 
 		panes, err := ListPanes("my-session", 2)

@@ -9,7 +9,7 @@ import (
 
 const (
 	windowListFormat = "#{window_index}|#{window_name}|#{window_active}"
-	paneListFormat   = "#{pane_index}|#{pane_current_command}|#{pane_active}|#{pane_width}|#{pane_height}"
+	paneListFormat   = "#{pane_index}|#{pane_current_command}|#{pane_active}|#{pane_width}|#{pane_height}|#{pane_pid}"
 )
 
 // ListWindows returns all windows in the given session, sorted by index.
@@ -97,8 +97,8 @@ func parseWindowLine(line string) (Window, error) {
 }
 
 func parsePaneLine(line string) (Pane, error) {
-	parts := strings.SplitN(line, "|", 5)
-	if len(parts) < 5 {
+	parts := strings.SplitN(line, "|", 6)
+	if len(parts) < 6 {
 		return Pane{}, fmt.Errorf("unexpected format: %s", line)
 	}
 
@@ -109,6 +109,7 @@ func parsePaneLine(line string) (Pane, error) {
 	active, _ := strconv.Atoi(parts[2])
 	width, _ := strconv.Atoi(parts[3])
 	height, _ := strconv.Atoi(parts[4])
+	pid, _ := strconv.Atoi(parts[5])
 
 	return Pane{
 		Index:   index,
@@ -116,5 +117,6 @@ func parsePaneLine(line string) (Pane, error) {
 		Active:  active > 0,
 		Width:   width,
 		Height:  height,
+		PID:     pid,
 	}, nil
 }
