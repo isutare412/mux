@@ -73,9 +73,9 @@ func formatItemRow(it listItem, selected bool, width int, t *treeState) string {
 	switch it.kind {
 	case itemWindow:
 		expanded := t.isWindowExpanded(it.session.Name, it.window.Index)
-		return formatWindowRow(it.window, expanded, selected, width)
+		return formatWindowRow(it.session.Name, it.window, expanded, selected, width, t)
 	case itemPane:
-		return formatPaneRow(it.pane, selected, width)
+		return formatPaneRow(it.session.Name, it.pane, selected, width, t)
 	default:
 		expanded := t.isSessionExpanded(it.session.Name)
 		return formatSessionRow(*it.session, expanded, selected, width)
@@ -132,7 +132,7 @@ func formatSessionRow(s tmux.Session, expanded, selected bool, width int) string
 		Render(row)
 }
 
-func formatWindowRow(w *tmux.Window, expanded, selected bool, width int) string {
+func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool, width int, t *treeState) string {
 	chevron := "▶"
 	if expanded {
 		chevron = "▼"
@@ -143,6 +143,12 @@ func formatWindowRow(w *tmux.Window, expanded, selected bool, width int) string 
 	}
 
 	text := fmt.Sprintf("%s%s %s %d:%s", strings.Repeat(" ", indentWindow), chevron, marker, w.Index, w.Name)
+
+	panes := t.panesCache[paneCacheKey{session: sessionName, window: w.Index}]
+	if info, ok := windowClaudeRollup(panes, t.claudeCache); ok {
+		text += claudeSuffix(info)
+	}
+
 	row := padOrTruncate(text, width)
 
 	if selected {
@@ -157,13 +163,18 @@ func formatWindowRow(w *tmux.Window, expanded, selected bool, width int) string 
 		Render(row)
 }
 
-func formatPaneRow(p *tmux.Pane, selected bool, width int) string {
+func formatPaneRow(sessionName string, p *tmux.Pane, selected bool, width int, t *treeState) string {
 	marker := " "
 	if p.Active {
 		marker = "*"
 	}
 
 	text := fmt.Sprintf("%s%s %d %s", strings.Repeat(" ", indentPane), marker, p.Index, p.Command)
+
+	if info, ok := t.claudeInfo(p.PID); ok && info.State != tmux.ClaudeNone {
+		text += claudeSuffix(info)
+	}
+
 	row := padOrTruncate(text, width)
 
 	if selected {
@@ -176,6 +187,25 @@ func formatPaneRow(p *tmux.Pane, selected bool, width int) string {
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#6B7280")).
 		Render(row)
+}
+
+// claudeSuffix renders " <icon> <elapsed>  <recap>" for a Claude pane. The whole
+// row is truncated to width by the caller, so recap is left intact here.
+func claudeSuffix(info tmux.ClaudeInfo) string {
+	icon, color := claudeStateGlyph(info.State)
+	elapsed := ""
+	if !info.Since.IsZero() {
+		elapsed = formatElapsed(time.Since(info.Since))
+	}
+	styledIcon := lipgloss.NewStyle().Foreground(color).Render(icon)
+	out := "  " + styledIcon
+	if elapsed != "" {
+		out += " " + elapsed
+	}
+	if info.Recap != "" {
+		out += "  " + lipgloss.NewStyle().Foreground(color).Render(info.Recap)
+	}
+	return out
 }
 
 // commandIconPlain returns the raw icon and its color for known AI CLIs.

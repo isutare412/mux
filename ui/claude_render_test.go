@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/lunemis/mux/tmux"
 )
 
@@ -69,4 +71,40 @@ func TestTreeStateClaudeCache(t *testing.T) {
 	if !ok || got.Recap != "x" {
 		t.Errorf("claudeInfo(42) = %+v, %v", got, ok)
 	}
+}
+
+func TestFormatPaneRowWithClaude(t *testing.T) {
+	st := newTreeState()
+	p := &tmux.Pane{Index: 1, Command: "claude", PID: 7}
+	st.claudeCache[7] = tmux.ClaudeInfo{
+		State: tmux.ClaudeIdle,
+		Recap: "DP-3733 done",
+		Since: time.Now().Add(-3 * time.Minute),
+	}
+	row := formatPaneRow("sess", p, false, 80, &st)
+	if !strings.Contains(stripANSI(row), "DP-3733 done") {
+		t.Errorf("pane row missing recap: %q", stripANSI(row))
+	}
+	if !strings.Contains(stripANSI(row), "✓") {
+		t.Errorf("pane row missing idle glyph: %q", stripANSI(row))
+	}
+}
+
+func TestFormatWindowRowRollup(t *testing.T) {
+	st := newTreeState()
+	st.panesCache[paneCacheKey{session: "sess", window: 0}] = []tmux.Pane{
+		{Index: 0, Command: "zsh", PID: 1},
+		{Index: 1, Command: "claude", PID: 2},
+	}
+	st.claudeCache[2] = tmux.ClaudeInfo{State: tmux.ClaudeWaiting, Recap: "needs perm"}
+	w := &tmux.Window{Index: 0, Name: "win"}
+	row := formatWindowRow("sess", w, false, false, 80, &st)
+	if !strings.Contains(stripANSI(row), "needs perm") {
+		t.Errorf("window row missing rolled-up recap: %q", stripANSI(row))
+	}
+}
+
+// stripANSI removes lipgloss color escape sequences for assertion.
+func stripANSI(s string) string {
+	return ansi.Strip(s)
 }
