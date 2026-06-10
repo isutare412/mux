@@ -34,5 +34,21 @@ type Pane struct {
 	Active  bool
 	Width   int
 	Height  int
-	PID     int // pane_pid from list-panes
+}
+
+// ClaudeState is the high-level activity state of a Claude Code pane.
+type ClaudeState int
+
+const (
+	ClaudeNone    ClaudeState = iota // not a Claude pane / no session file
+	ClaudeWorking                    // actively generating
+	ClaudeWaiting                    // awaiting a permission/tool approval
+	ClaudeIdle                       // done / idle
+)
+
+// ClaudeInfo is the per-pane Claude snapshot rendered inline in the tree.
+type ClaudeInfo struct {
+	State ClaudeState
+	Recap string    // latest aiTitle, may be ""
+	Since time.Time // session updatedAt; elapsed = now - Since
 }

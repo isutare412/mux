@@ -109,3 +109,26 @@ func TestParseTokenUsageMissingFile(t *testing.T) {
 		t.Error("expected error for missing file")
 	}
 }
+
+func TestDeriveClaudeState(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   string
+		awaiting bool
+		want     ClaudeState
+	}{
+		{"busy is working", "busy", false, ClaudeWorking},
+		{"busy stays working even with pending tool", "busy", true, ClaudeWorking},
+		{"not busy with pending tool waits", "idle", true, ClaudeWaiting},
+		{"not busy no pending tool is idle", "idle", false, ClaudeIdle},
+		{"empty status no pending is idle", "", false, ClaudeIdle},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := deriveClaudeState(tt.status, tt.awaiting)
+			if got != tt.want {
+				t.Errorf("deriveClaudeState(%q, %v) = %d, want %d", tt.status, tt.awaiting, got, tt.want)
+			}
+		})
+	}
+}

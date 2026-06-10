@@ -198,3 +198,17 @@ func FormatTokens(n int) string {
 func containsBytes(haystack, needle []byte) bool {
 	return strings.Contains(string(haystack), string(needle))
 }
+
+// deriveClaudeState maps a session status string and a pending-tool signal to a
+// ClaudeState. When CC is "busy" it is actively running (auto-approved tools
+// included), so that always reads as working. Only when it is NOT busy and a
+// tool call is still pending do we treat it as waiting for permission.
+func deriveClaudeState(status string, awaitingTool bool) ClaudeState {
+	if status == "busy" {
+		return ClaudeWorking
+	}
+	if awaitingTool {
+		return ClaudeWaiting
+	}
+	return ClaudeIdle
+}
