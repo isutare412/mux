@@ -58,6 +58,7 @@ type Model struct {
 	filterText       string
 	attachTarget     previewKey // set when we want to attach after quitting (zero value = no attach)
 	focusSession     string // session name to focus cursor on after next load
+	focusWindow      int    // window index to focus within focusSession; -1 = focus the session row
 	previewContent string           // cached capture-pane output
 	previewKey     previewKey       // (session, window, pane) the cache belongs to
 	tokenUsage     *tmux.TokenUsage // cached token usage for current AI session
@@ -103,6 +104,17 @@ type panesLoadedMsg struct {
 	panes       []tmux.Pane
 }
 
+type currentContextMsg struct {
+	session string
+	window  int
+	ok      bool
+}
+
+func loadCurrentContext() tea.Msg {
+	session, window, ok := tmux.CurrentContext()
+	return currentContextMsg{session: session, window: window, ok: ok}
+}
+
 func loadWindows(sessionName string) tea.Cmd {
 	return func() tea.Msg {
 		windows, _ := tmux.ListWindows(sessionName)
@@ -144,7 +156,7 @@ func NewModel() Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(loadSessions, tick())
+	return tea.Batch(loadSessions, loadCurrentContext, tick())
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -185,15 +197,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, loadWindows(name))
 			}
 			m.applyFilter()
-			if m.focusSession != "" {
-				for i, it := range m.items {
-					if it.kind == itemSession && it.session.Name == m.focusSession {
-						m.cursor = i
-						break
-					}
-				}
-				m.focusSession = ""
-			}
 			return m, tea.Batch(cmds...)
 		}
 		return m, nil
@@ -206,6 +209,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case panesLoadedMsg:
 		m.tree.panesCache[paneCacheKey{session: msg.sessionName, window: msg.windowIndex}] = msg.panes
 		m.rebuildItems()
+		return m, nil
+
+	case currentContextMsg:
+		if msg.ok {
+			m.focusSession = msg.session
+			m.focusWindow = msg.window
+			m.rebuildItems()
+		}
 		return m, nil
 
 	case previewLoadedMsg:
@@ -221,6 +232,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sessionCreatedMsg:
 		m.mode = modeList
 		m.focusSession = msg.name
+		m.focusWindow = -1
 		return m, loadSessions
 
 	case sessionRenamedMsg:
@@ -270,19 +282,23 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "up", "k":
+			m.focusSession = ""
 			if m.cursor > 0 {
 				m.cursor--
 				return m, m.refreshCurrentPreview()
 			}
 		case "down", "j":
+			m.focusSession = ""
 			if m.cursor < len(m.items)-1 {
 				m.cursor++
 				return m, m.refreshCurrentPreview()
 			}
 		case "g":
+			m.focusSession = ""
 			m.cursor = 0
 			return m, m.refreshCurrentPreview()
 		case "G":
+			m.focusSession = ""
 			if len(m.items) > 0 {
 				m.cursor = len(m.items) - 1
 				return m, m.refreshCurrentPreview()
@@ -501,6 +517,27 @@ func (m *Model) rebuildItems() {
 	m.items = flatten(m.filtered, &m.tree)
 	if m.cursor >= len(m.items) {
 		m.cursor = max(0, len(m.items)-1)
+	}
+	m.applyPendingFocus()
+}
+
+// applyPendingFocus moves the cursor to the pending focus target if its row is
+// present, then clears the target. A window target that hasn't loaded yet stays
+// pending so a later rebuild (after windowsLoadedMsg) can snap to it.
+func (m *Model) applyPendingFocus() {
+	if m.focusSession == "" {
+		return
+	}
+	if m.focusWindow >= 0 {
+		if idx := m.findItemIndex(itemWindow, m.focusSession, m.focusWindow, 0); idx >= 0 {
+			m.cursor = idx
+			m.focusSession = ""
+		}
+		return
+	}
+	if idx := m.findItemIndex(itemSession, m.focusSession, 0, 0); idx >= 0 {
+		m.cursor = idx
+		m.focusSession = ""
 	}
 }
 
