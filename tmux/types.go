@@ -34,6 +34,7 @@ type Pane struct {
 	Active  bool
 	Width   int
 	Height  int
+	PID     int // pane_pid from list-panes
 }
 
 // ClaudeState is the high-level activity state of a Claude Code pane.
