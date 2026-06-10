@@ -34,6 +34,8 @@ type claudeSessionFile struct {
 	PID       int    `json:"pid"`
 	SessionID string `json:"sessionId"`
 	CWD       string `json:"cwd"`
+	Status    string `json:"status"`
+	UpdatedAt int64  `json:"updatedAt"` // unix milliseconds
 }
 
 // jsonlMessage is a minimal representation of a JSONL line with usage data.
@@ -58,6 +60,18 @@ type cachedUsage struct {
 var (
 	usageCache   = make(map[string]cachedUsage) // sessionID → cached usage
 	usageCacheMu sync.Mutex
+)
+
+const claudeInfoTTL = 3 * time.Second
+
+type cachedClaudeInfo struct {
+	info      *ClaudeInfo
+	expiresAt time.Time
+}
+
+var (
+	claudeInfoCache   = make(map[string]cachedClaudeInfo) // sessionID → info
+	claudeInfoCacheMu sync.Mutex
 )
 
 // FindClaudeSession locates a Claude Code session file for a given tmux pane PID.
@@ -90,6 +104,60 @@ func FindClaudeSession(panePID int) (sessionID string, cwd string, err error) {
 	}
 
 	return "", "", fmt.Errorf("no claude session found for pane %d", panePID)
+}
+
+// LoadClaudeInfo resolves the Claude session for a tmux pane PID and returns its
+// current state, recap, and last-activity time. Results are cached briefly by
+// sessionID. Returns an error when the pane has no Claude child process.
+func LoadClaudeInfo(panePID int) (*ClaudeInfo, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := runner.Output("pgrep", "-P", fmt.Sprintf("%d", panePID))
+	if err != nil {
+		return nil, fmt.Errorf("no child processes for pane %d", panePID)
+	}
+
+	sessDir := filepath.Join(home, claudeDir, sessionsDir)
+	for _, pidStr := range strings.Fields(string(out)) {
+		data, err := os.ReadFile(filepath.Join(sessDir, pidStr+".json"))
+		if err != nil {
+			continue
+		}
+		var sf claudeSessionFile
+		if err := json.Unmarshal(data, &sf); err != nil {
+			continue
+		}
+		return buildClaudeInfo(home, sf), nil
+	}
+	return nil, fmt.Errorf("no claude session found for pane %d", panePID)
+}
+
+// buildClaudeInfo assembles (and caches) a ClaudeInfo from a session file.
+func buildClaudeInfo(home string, sf claudeSessionFile) *ClaudeInfo {
+	claudeInfoCacheMu.Lock()
+	if c, ok := claudeInfoCache[sf.SessionID]; ok && time.Now().Before(c.expiresAt) {
+		claudeInfoCacheMu.Unlock()
+		return c.info
+	}
+	claudeInfoCacheMu.Unlock()
+
+	jsonlPath := filepath.Join(home, claudeDir, projectsDir, encodePath(sf.CWD), sf.SessionID+".jsonl")
+	awaiting, _ := transcriptAwaitingTool(jsonlPath)
+	recap, _ := loadRecap(jsonlPath)
+
+	info := &ClaudeInfo{
+		State: deriveClaudeState(sf.Status, awaiting),
+		Recap: recap,
+		Since: time.UnixMilli(sf.UpdatedAt),
+	}
+
+	claudeInfoCacheMu.Lock()
+	claudeInfoCache[sf.SessionID] = cachedClaudeInfo{info: info, expiresAt: time.Now().Add(claudeInfoTTL)}
+	claudeInfoCacheMu.Unlock()
+	return info
 }
 
 // LoadTokenUsage reads and aggregates token usage from a Claude session's JSONL log.

@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -182,6 +183,23 @@ func joinLines(lines []string) string {
 		out += l + "\n"
 	}
 	return out
+}
+
+func TestClaudeSessionFileDecode(t *testing.T) {
+	raw := []byte(`{"pid":81767,"sessionId":"abc","cwd":"/tmp/x","status":"busy","updatedAt":1781083530418}`)
+	var sf claudeSessionFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+	if sf.Status != "busy" {
+		t.Errorf("Status = %q, want busy", sf.Status)
+	}
+	if sf.UpdatedAt != 1781083530418 {
+		t.Errorf("UpdatedAt = %d, want 1781083530418", sf.UpdatedAt)
+	}
+	if sf.SessionID != "abc" || sf.CWD != "/tmp/x" {
+		t.Errorf("SessionID/CWD = %q/%q", sf.SessionID, sf.CWD)
+	}
 }
 
 func TestTranscriptAwaitingTool(t *testing.T) {
