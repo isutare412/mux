@@ -132,3 +132,54 @@ func TestDeriveClaudeState(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadRecap(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	lines := []string{
+		`{"type":"user","message":{"role":"user","content":"hi"}}`,
+		`{"type":"ai-title","aiTitle":"First title","sessionId":"s"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text"}]}}`,
+		`{"type":"ai-title","aiTitle":"Latest title","sessionId":"s"}`,
+	}
+	if err := os.WriteFile(path, []byte(joinLines(lines)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadRecap(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Latest title" {
+		t.Errorf("loadRecap = %q, want %q", got, "Latest title")
+	}
+}
+
+func TestLoadRecapNoTitle(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	if err := os.WriteFile(path, []byte(`{"type":"user"}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadRecap(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Errorf("loadRecap = %q, want empty", got)
+	}
+}
+
+func TestLoadRecapMissingFile(t *testing.T) {
+	if _, err := loadRecap("/nonexistent/x.jsonl"); err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
+// joinLines joins JSONL lines with trailing newlines.
+func joinLines(lines []string) string {
+	out := ""
+	for _, l := range lines {
+		out += l + "\n"
+	}
+	return out
+}

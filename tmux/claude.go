@@ -2,8 +2,10 @@ package tmux
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -211,4 +213,57 @@ func deriveClaudeState(status string, awaitingTool bool) ClaudeState {
 		return ClaudeWaiting
 	}
 	return ClaudeIdle
+}
+
+// recapTailBytes bounds how much of the (possibly large) transcript tail we
+// read when looking for the latest ai-title / pending tool. ai-title lines are
+// written frequently, so the most recent one is virtually always in the tail.
+const recapTailBytes = 64 * 1024
+
+// tailBytes returns up to the last n bytes of the file at path.
+func tailBytes(path string, n int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	start := int64(0)
+	if info.Size() > n {
+		start = info.Size() - n
+	}
+	if _, err := f.Seek(start, io.SeekStart); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(f)
+}
+
+// loadRecap returns the most recent ai-title in the transcript at path, or ""
+// if none is present in the scanned tail.
+func loadRecap(path string) (string, error) {
+	data, err := tailBytes(path, recapTailBytes)
+	if err != nil {
+		return "", err
+	}
+	recap := ""
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if !bytes.Contains(line, []byte(`"ai-title"`)) {
+			continue
+		}
+		var m struct {
+			Type    string `json:"type"`
+			AITitle string `json:"aiTitle"`
+		}
+		if json.Unmarshal(line, &m) != nil {
+			continue
+		}
+		if m.Type == "ai-title" {
+			recap = m.AITitle
+		}
+	}
+	return recap, nil
 }
