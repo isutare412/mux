@@ -194,6 +194,21 @@ func TestListPanesWithMock(t *testing.T) {
 	})
 }
 
+func TestRenameWindowWithMock(t *testing.T) {
+	withMock(t, func(m *mockRunner) {
+		if err := RenameWindow("my-session", 2, "logs"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(m.runs) != 1 {
+			t.Fatalf("expected 1 run call, got %d", len(m.runs))
+		}
+		expected := "tmux rename-window -t my-session:2 logs"
+		if m.runs[0] != expected {
+			t.Errorf("expected %q, got %q", expected, m.runs[0])
+		}
+	})
+}
+
 func TestListWindowsEmpty(t *testing.T) {
 	withMock(t, func(m *mockRunner) {
 		m.OnOutput([]byte(""), nil, "tmux", "list-windows", "-t", "empty", "-F", windowListFormat)

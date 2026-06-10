@@ -41,6 +41,12 @@ func ListWindows(sessionName string) ([]Window, error) {
 	return windows, nil
 }
 
+// RenameWindow renames the window at windowIndex in the given session.
+func RenameWindow(sessionName string, windowIndex int, newName string) error {
+	target := fmt.Sprintf("%s:%d", sessionName, windowIndex)
+	return runner.Run("tmux", "rename-window", "-t", target, newName)
+}
+
 // ListPanes returns all panes in the given window, sorted by index.
 // windowIndex is the tmux window index (as reported by ListWindows).
 func ListPanes(sessionName string, windowIndex int) ([]Pane, error) {

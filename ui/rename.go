@@ -7,9 +7,12 @@ import (
 )
 
 type renameModel struct {
-	input   textinput.Model
-	oldName string
-	err     error
+	input       textinput.Model
+	kind        itemKind // itemSession or itemWindow
+	oldName     string
+	sessionName string // parent session (set for window renames)
+	windowIndex int    // tmux window index (set for window renames)
+	err         error
 }
 
 type sessionRenamedMsg struct {
@@ -17,17 +20,37 @@ type sessionRenamedMsg struct {
 	newName string
 }
 
-func newRenameModel(oldName string) renameModel {
+type windowRenamedMsg struct {
+	sessionName string
+}
+
+func newRenameInput(oldName string) textinput.Model {
 	input := textinput.New()
 	input.Placeholder = oldName
 	input.SetValue(oldName)
 	input.Focus()
 	input.CharLimit = 50
 	input.Width = 40
+	return input
+}
 
+// newRenameModel builds a model for renaming a session.
+func newRenameModel(oldName string) renameModel {
 	return renameModel{
-		input:   input,
+		input:   newRenameInput(oldName),
+		kind:    itemSession,
 		oldName: oldName,
+	}
+}
+
+// newWindowRenameModel builds a model for renaming a window within a session.
+func newWindowRenameModel(sessionName string, windowIndex int, oldName string) renameModel {
+	return renameModel{
+		input:       newRenameInput(oldName),
+		kind:        itemWindow,
+		oldName:     oldName,
+		sessionName: sessionName,
+		windowIndex: windowIndex,
 	}
 }
 
@@ -39,6 +62,16 @@ func (m renameModel) Update(msg tea.Msg) (renameModel, tea.Cmd) {
 			newName := m.input.Value()
 			if newName == "" || newName == m.oldName {
 				return m, nil
+			}
+			if m.kind == itemWindow {
+				if err := tmux.RenameWindow(m.sessionName, m.windowIndex, newName); err != nil {
+					m.err = err
+					return m, nil
+				}
+				sessionName := m.sessionName
+				return m, func() tea.Msg {
+					return windowRenamedMsg{sessionName: sessionName}
+				}
 			}
 			if err := tmux.RenameSession(m.oldName, newName); err != nil {
 				m.err = err
@@ -56,7 +89,11 @@ func (m renameModel) Update(msg tea.Msg) (renameModel, tea.Cmd) {
 }
 
 func (m renameModel) View() string {
-	s := inputLabelStyle.Render("Rename Session") + "\n\n"
+	title := "Rename Session"
+	if m.kind == itemWindow {
+		title = "Rename Window"
+	}
+	s := inputLabelStyle.Render(title) + "\n\n"
 	s += inputLabelStyle.Render("Name: ") + m.input.View() + "\n\n"
 	s += helpStyle.Render("enter confirm • esc cancel")
 
