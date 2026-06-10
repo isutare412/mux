@@ -13,6 +13,11 @@ var (
 	colorSelected = lipgloss.Color("#312E81")
 	colorCursor   = lipgloss.Color("#A78BFA")
 
+	// Claude state colors
+	colorClaudeWorking = lipgloss.Color("#60A5FA") // blue
+	colorClaudeWaiting = lipgloss.Color("#F59E0B") // orange
+	colorClaudeIdle    = lipgloss.Color("#22C55E") // green
+
 	// Styles
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
