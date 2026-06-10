@@ -142,12 +142,7 @@ func formatWindowRow(w *tmux.Window, expanded, selected bool, width int) string 
 		marker = "*"
 	}
 
-	name := w.Name
-	if len(name) > maxSessionNameDisplay {
-		name = name[:maxSessionNameDisplay-3] + "..."
-	}
-
-	text := fmt.Sprintf("%s%s %s %d:%s", strings.Repeat(" ", indentWindow), chevron, marker, w.Index, name)
+	text := fmt.Sprintf("%s%s %s %d:%s", strings.Repeat(" ", indentWindow), chevron, marker, w.Index, w.Name)
 	row := padOrTruncate(text, width)
 
 	if selected {
@@ -167,12 +162,8 @@ func formatPaneRow(p *tmux.Pane, selected bool, width int) string {
 	if p.Active {
 		marker = "*"
 	}
-	cmd := p.Command
-	if len(cmd) > maxSessionNameDisplay {
-		cmd = cmd[:maxSessionNameDisplay-3] + "..."
-	}
 
-	text := fmt.Sprintf("%s%s %d %s", strings.Repeat(" ", indentPane), marker, p.Index, cmd)
+	text := fmt.Sprintf("%s%s %d %s", strings.Repeat(" ", indentPane), marker, p.Index, p.Command)
 	row := padOrTruncate(text, width)
 
 	if selected {
