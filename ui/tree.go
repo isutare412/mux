@@ -37,6 +37,7 @@ type treeState struct {
 	windowsCache    map[string][]tmux.Window
 	panesCache      map[paneCacheKey][]tmux.Pane
 	seenSession     map[string]bool // sessions already auto-expanded once
+	claudeCache     map[int]tmux.ClaudeInfo // pane PID → latest Claude snapshot
 }
 
 func newTreeState() treeState {
@@ -46,6 +47,7 @@ func newTreeState() treeState {
 		windowsCache:    make(map[string][]tmux.Window),
 		panesCache:      make(map[paneCacheKey][]tmux.Pane),
 		seenSession:     make(map[string]bool),
+		claudeCache:     make(map[int]tmux.ClaudeInfo),
 	}
 }
 
@@ -133,6 +135,21 @@ func (t *treeState) pruneCaches(sessions []tmux.Session) {
 			delete(t.panesCache, key)
 		}
 	}
+
+	livePIDs := make(map[int]struct{})
+	for key, panes := range t.panesCache {
+		if _, ok := live[key.session]; !ok {
+			continue
+		}
+		for _, p := range panes {
+			livePIDs[p.PID] = struct{}{}
+		}
+	}
+	for pid := range t.claudeCache {
+		if _, ok := livePIDs[pid]; !ok {
+			delete(t.claudeCache, pid)
+		}
+	}
 }
 
 // flatten builds a flattened list of rows from the given sessions and tree
@@ -199,6 +216,12 @@ func (k previewKey) target() string {
 		return formatTarget(k.session, k.window, -1)
 	}
 	return formatTarget(k.session, k.window, k.pane)
+}
+
+// claudeInfo returns the cached Claude snapshot for a pane PID, if present.
+func (t *treeState) claudeInfo(pid int) (tmux.ClaudeInfo, bool) {
+	info, ok := t.claudeCache[pid]
+	return info, ok
 }
 
 // previewKeyForItem returns the previewKey for the given list item.

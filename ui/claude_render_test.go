@@ -58,3 +58,15 @@ func TestClaudeStateGlyph(t *testing.T) {
 		t.Errorf("idle icon = %q, want ✓", icon)
 	}
 }
+
+func TestTreeStateClaudeCache(t *testing.T) {
+	st := newTreeState()
+	if _, ok := st.claudeInfo(42); ok {
+		t.Error("expected miss on empty cache")
+	}
+	st.claudeCache[42] = tmux.ClaudeInfo{State: tmux.ClaudeWorking, Recap: "x"}
+	got, ok := st.claudeInfo(42)
+	if !ok || got.Recap != "x" {
+		t.Errorf("claudeInfo(42) = %+v, %v", got, ok)
+	}
+}
