@@ -18,6 +18,10 @@ var (
 	colorClaudeWaiting = lipgloss.Color("#F59E0B") // orange
 	colorClaudeIdle    = lipgloss.Color("#22C55E") // green
 
+	// colorClaude is claude's brand orange used for window names of windows
+	// running claude. Mirrors aiToolMap["claude"].Color.
+	colorClaude = lipgloss.Color("#F59E0B")
+
 	// Styles
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).

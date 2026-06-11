@@ -173,10 +173,19 @@ func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool
 		marker = "*"
 	}
 
-	text := fmt.Sprintf("%s%s %s %d:%s", strings.Repeat(" ", indentWindow), chevron, marker, w.Index, w.Name)
-
 	panes := t.panesCache[paneCacheKey{session: sessionName, window: w.Index}]
-	if info, ok := windowClaudeRollup(panes, t.claudeCache); ok {
+	info, isClaude := windowClaudeRollup(panes, t.claudeCache)
+
+	// Color the window name claude-orange when the window runs claude, but only
+	// on non-selected rows — the selected row's whole-row style takes over.
+	name := w.Name
+	if isClaude && !selected {
+		name = lipgloss.NewStyle().Foreground(colorClaude).Render(w.Name)
+	}
+
+	text := fmt.Sprintf("%s%s %s %d:%s", strings.Repeat(" ", indentWindow), chevron, marker, w.Index, name)
+
+	if isClaude {
 		text += claudeSuffix(info)
 	}
 

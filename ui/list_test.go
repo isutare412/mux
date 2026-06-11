@@ -110,3 +110,40 @@ func TestFormatWindowRow_JumpLabelKeepsChevronNoShift(t *testing.T) {
 		t.Errorf("row width changed with label: %d vs %d", ansi.StringWidth(plain), ansi.StringWidth(labeled))
 	}
 }
+
+func TestFormatWindowRow_ClaudeNameOrangeWhenNotSelected(t *testing.T) {
+	st := newTreeState()
+	st.panesCache[paneCacheKey{session: "sess", window: 0}] = []tmux.Pane{{Index: 0, PID: 2}}
+	st.claudeCache[2] = tmux.ClaudeInfo{State: tmux.ClaudeWaiting}
+	w := &tmux.Window{Index: 0, Name: "claude"}
+	row := formatWindowRow("sess", w, false, false, 60, &st, "")
+	wantOrange := lipgloss.NewStyle().Foreground(colorClaude).Render("claude")
+	if !strings.Contains(row, wantOrange) {
+		t.Errorf("expected orange claude window name %q in %q", wantOrange, row)
+	}
+}
+
+func TestFormatWindowRow_NonClaudeNameNotOrange(t *testing.T) {
+	st := newTreeState()
+	w := &tmux.Window{Index: 0, Name: "nvim"}
+	row := formatWindowRow("sess", w, false, false, 60, &st, "")
+	wantOrange := lipgloss.NewStyle().Foreground(colorClaude).Render("nvim")
+	if strings.Contains(row, wantOrange) {
+		t.Errorf("did not expect orange styling on non-claude window %q", row)
+	}
+}
+
+func TestFormatWindowRow_ClaudeNamePlainWhenSelected(t *testing.T) {
+	st := newTreeState()
+	st.panesCache[paneCacheKey{session: "sess", window: 0}] = []tmux.Pane{{Index: 0, PID: 2}}
+	st.claudeCache[2] = tmux.ClaudeInfo{State: tmux.ClaudeWaiting}
+	w := &tmux.Window{Index: 0, Name: "claude"}
+	row := formatWindowRow("sess", w, false, true, 60, &st, "")
+	wantOrange := lipgloss.NewStyle().Foreground(colorClaude).Render("claude")
+	if strings.Contains(row, wantOrange) {
+		t.Errorf("did not expect orange name on selected row %q", row)
+	}
+	if !strings.Contains(ansi.Strip(row), "claude") {
+		t.Errorf("expected name present in selected row %q", row)
+	}
+}
