@@ -50,6 +50,6 @@ const (
 // ClaudeInfo is the per-pane Claude snapshot rendered inline in the tree.
 type ClaudeInfo struct {
 	State ClaudeState
-	Recap string    // cleaned recap: away_summary → ai-title → last assistant text, may be ""
+	Recap string    // cleaned recap: ai-title → away_summary → last assistant text, may be ""
 	Since time.Time // session updatedAt; elapsed = now - Since
 }

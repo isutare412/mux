@@ -532,8 +532,8 @@ func lastAssistantText(lines [][]byte) string {
 
 // loadRecap returns a cleaned one-line recap for the transcript at path,
 // selecting the first available source in priority order:
-//  1. away_summary  (Claude Code's "Recap" — richest, subject-accurate)
-//  2. ai-title      (session title; re-stamped each turn, always near the tail)
+//  1. ai-title      (concise session title; re-stamped each turn, near the tail)
+//  2. away_summary  (Claude Code's "Recap" — richer; used when no ai-title)
 //  3. last assistant text (covers brand-new sessions before 1/2 exist)
 //  4. ""            (none available)
 func loadRecap(path string) (string, error) {
@@ -567,11 +567,11 @@ func loadRecap(path string) (string, error) {
 		}
 	}
 
-	if away != "" {
-		return cleanRecapText(away), nil
-	}
 	if ai != "" {
 		return cleanRecapText(ai), nil
+	}
+	if away != "" {
+		return cleanRecapText(away), nil
 	}
 	if t := lastAssistantText(lines); t != "" {
 		return cleanRecapText(t), nil

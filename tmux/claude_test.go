@@ -263,7 +263,7 @@ func TestCleanRecapText(t *testing.T) {
 	}
 }
 
-func TestLoadRecapPrefersAwaySummary(t *testing.T) {
+func TestLoadRecapPrefersAiTitle(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "s.jsonl")
 	lines := []string{
@@ -278,8 +278,8 @@ func TestLoadRecapPrefersAwaySummary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "colorizing the tmux picker: bold names" {
-		t.Errorf("loadRecap = %q, want away_summary-derived recap", got)
+	if got != "Rebase branch into main" {
+		t.Errorf("loadRecap = %q, want ai-title to win over away_summary", got)
 	}
 }
 
@@ -321,13 +321,12 @@ func TestLoadRecapFallsBackToLastAssistant(t *testing.T) {
 	}
 }
 
-// away_summary must win even when an ai-title AND an assistant text message are
-// all present in the same transcript.
-func TestLoadRecapAwayWinsOverAllSources(t *testing.T) {
+// away_summary is the second-priority source: with no ai-title present it must
+// win over a last-assistant text message.
+func TestLoadRecapAwayBeatsAssistant(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "s.jsonl")
 	lines := []string{
-		`{"type":"ai-title","aiTitle":"Rebase branch into main","sessionId":"s"}`,
 		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Some assistant prose."}]}}`,
 		`{"type":"system","subtype":"away_summary","content":"Goal was colorizing the picker. Done."}`,
 	}
@@ -339,7 +338,7 @@ func TestLoadRecapAwayWinsOverAllSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != "colorizing the picker" {
-		t.Errorf("loadRecap = %q, want away_summary to win over ai-title and assistant text", got)
+		t.Errorf("loadRecap = %q, want away_summary to win over assistant text", got)
 	}
 }
 
