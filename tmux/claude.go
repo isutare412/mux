@@ -366,9 +366,10 @@ func deriveClaudeState(status string, awaitingTool bool) ClaudeState {
 }
 
 // recapTailBytes bounds how much of the (possibly large) transcript tail we
-// read when looking for the latest ai-title / pending tool. ai-title lines are
-// written frequently, so the most recent one is virtually always in the tail.
-const recapTailBytes = 64 * 1024
+// read when looking for the latest recap source / pending tool. ai-title is
+// re-stamped every turn (always near the tail), but away_summary is written
+// only at idle points, so we read a larger window to catch it in long sessions.
+const recapTailBytes = 256 * 1024
 
 // tailBytes returns up to the last n bytes of the file at path.
 func tailBytes(path string, n int64) ([]byte, error) {
@@ -495,28 +496,51 @@ func lastAssistantText(lines [][]byte) string {
 	return ""
 }
 
-// loadRecap returns the most recent ai-title in the transcript at path, or ""
-// if none is present in the scanned tail.
+// loadRecap returns a cleaned one-line recap for the transcript at path,
+// selecting the first available source in priority order:
+//  1. away_summary  (Claude Code's "Recap" — richest, subject-accurate)
+//  2. ai-title      (session title; re-stamped each turn, always near the tail)
+//  3. last assistant text (covers brand-new sessions before 1/2 exist)
+//  4. ""            (none available)
 func loadRecap(path string) (string, error) {
 	data, err := tailBytes(path, recapTailBytes)
 	if err != nil {
 		return "", err
 	}
-	recap := ""
-	for _, line := range bytes.Split(data, []byte("\n")) {
-		if !bytes.Contains(line, []byte(`"ai-title"`)) {
+	lines := bytes.Split(data, []byte("\n"))
+
+	away, ai := "", ""
+	for _, line := range lines {
+		if bytes.Contains(line, []byte(`"away_summary"`)) {
+			var m struct {
+				Type    string `json:"type"`
+				Subtype string `json:"subtype"`
+				Content string `json:"content"`
+			}
+			if json.Unmarshal(line, &m) == nil && m.Type == "system" && m.Subtype == "away_summary" {
+				away = m.Content
+			}
 			continue
 		}
-		var m struct {
-			Type    string `json:"type"`
-			AITitle string `json:"aiTitle"`
-		}
-		if json.Unmarshal(line, &m) != nil {
-			continue
-		}
-		if m.Type == "ai-title" {
-			recap = m.AITitle
+		if bytes.Contains(line, []byte(`"ai-title"`)) {
+			var m struct {
+				Type    string `json:"type"`
+				AITitle string `json:"aiTitle"`
+			}
+			if json.Unmarshal(line, &m) == nil && m.Type == "ai-title" {
+				ai = m.AITitle
+			}
 		}
 	}
-	return recap, nil
+
+	if away != "" {
+		return cleanRecapText(away), nil
+	}
+	if ai != "" {
+		return cleanRecapText(ai), nil
+	}
+	if t := lastAssistantText(lines); t != "" {
+		return cleanRecapText(t), nil
+	}
+	return "", nil
 }

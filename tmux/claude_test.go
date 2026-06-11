@@ -217,6 +217,64 @@ func TestCleanRecapText(t *testing.T) {
 	}
 }
 
+func TestLoadRecapPrefersAwaySummary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	lines := []string{
+		`{"type":"ai-title","aiTitle":"Rebase branch into main","sessionId":"s"}`,
+		`{"type":"system","subtype":"away_summary","content":"Goal was colorizing the tmux picker: bold names. Done. (disable recaps in /config)"}`,
+		`{"type":"ai-title","aiTitle":"Rebase branch into main","sessionId":"s"}`,
+	}
+	if err := os.WriteFile(path, []byte(joinLines(lines)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadRecap(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "colorizing the tmux picker: bold names" {
+		t.Errorf("loadRecap = %q, want away_summary-derived recap", got)
+	}
+}
+
+func TestLoadRecapFallsBackToAiTitle(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	lines := []string{
+		`{"type":"ai-title","aiTitle":"Fix pnpm build failure","sessionId":"s"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Working on it."}]}}`,
+	}
+	if err := os.WriteFile(path, []byte(joinLines(lines)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadRecap(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Fix pnpm build failure" {
+		t.Errorf("loadRecap = %q, want ai-title", got)
+	}
+}
+
+func TestLoadRecapFallsBackToLastAssistant(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	lines := []string{
+		`{"type":"user","message":{"role":"user","content":"start"}}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I am refactoring the loader. More detail follows."}]}}`,
+	}
+	if err := os.WriteFile(path, []byte(joinLines(lines)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadRecap(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "I am refactoring the loader" {
+		t.Errorf("loadRecap = %q, want first sentence of last assistant text", got)
+	}
+}
+
 // joinLines joins JSONL lines with trailing newlines.
 func joinLines(lines []string) string {
 	out := ""
