@@ -374,6 +374,24 @@ func TestTranscriptAwaitingTool(t *testing.T) {
 	}
 }
 
+func TestLastAssistantText(t *testing.T) {
+	lines := [][]byte{
+		[]byte(`{"type":"user","message":{"role":"user","content":"hi"}}`),
+		[]byte(`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"First reply."}]}}`),
+		[]byte(`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash"}]}}`),
+	}
+	// Most-recent assistant turn is tool-only (no text); should fall back to the
+	// previous assistant turn's text.
+	if got := lastAssistantText(lines); got != "First reply." {
+		t.Errorf("lastAssistantText = %q, want %q", got, "First reply.")
+	}
+
+	none := [][]byte{[]byte(`{"type":"user","message":{"role":"user","content":"hi"}}`)}
+	if got := lastAssistantText(none); got != "" {
+		t.Errorf("lastAssistantText(no assistant) = %q, want empty", got)
+	}
+}
+
 // writeSessionFile creates configDir/sessions/<pid>.json with the given session.
 func writeSessionFile(t *testing.T, configDir string, pid int, sf claudeSessionFile) {
 	t.Helper()

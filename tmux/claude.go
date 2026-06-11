@@ -462,6 +462,39 @@ func cleanRecapText(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// lastAssistantText returns the joined text content of the most recent
+// assistant message that has any text parts, scanning from the end. Assistant
+// turns that contain only tool_use (no prose) are skipped. Returns "" if none.
+func lastAssistantText(lines [][]byte) string {
+	for i := len(lines) - 1; i >= 0; i-- {
+		if !bytes.Contains(lines[i], []byte(`"assistant"`)) {
+			continue
+		}
+		var m struct {
+			Type    string `json:"type"`
+			Message struct {
+				Content []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"content"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(lines[i], &m) != nil || m.Type != "assistant" {
+			continue
+		}
+		var parts []string
+		for _, c := range m.Message.Content {
+			if c.Type == "text" && c.Text != "" {
+				parts = append(parts, c.Text)
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, " ")
+		}
+	}
+	return ""
+}
+
 // loadRecap returns the most recent ai-title in the transcript at path, or ""
 // if none is present in the scanned tail.
 func loadRecap(path string) (string, error) {
