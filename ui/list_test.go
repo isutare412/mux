@@ -1,12 +1,51 @@
 package ui
 
 import (
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lunemis/mux/tmux"
 )
+
+// TestMain forces a truecolor profile so lipgloss emits ANSI escape codes even
+// without a TTY, making the color/bold assertions below deterministic.
+func TestMain(m *testing.M) {
+	lipgloss.SetColorProfile(0) // termenv.TrueColor
+	os.Exit(m.Run())
+}
+
+func TestFormatSessionRow_NameBoldWhenNotSelected(t *testing.T) {
+	s := tmux.Session{Name: "mux"}
+	row := formatSessionRow(s, false, false, 60, "")
+	wantBold := lipgloss.NewStyle().Bold(true).Render("mux")
+	if !strings.Contains(row, wantBold) {
+		t.Errorf("expected bold session name %q in %q", wantBold, row)
+	}
+}
+
+func TestFormatSessionRow_NameNotBoldWhenSelected(t *testing.T) {
+	s := tmux.Session{Name: "mux"}
+	row := formatSessionRow(s, false, true, 60, "")
+	standaloneBold := lipgloss.NewStyle().Bold(true).Render("mux")
+	if strings.Contains(row, standaloneBold) {
+		t.Errorf("did not expect standalone bold name in selected row %q", row)
+	}
+	if !strings.Contains(ansi.Strip(row), "mux") {
+		t.Errorf("expected name present in selected row %q", row)
+	}
+}
+
+func TestFormatSessionRow_BoldPreservesWidth(t *testing.T) {
+	s := tmux.Session{Name: "mux"}
+	plain := formatSessionRow(s, false, true, 60, "")  // selected: plain name
+	bold := formatSessionRow(s, false, false, 60, "")  // non-selected: bold name
+	if ansi.StringWidth(plain) != ansi.StringWidth(bold) {
+		t.Errorf("bold changed row width: %d vs %d", ansi.StringWidth(plain), ansi.StringWidth(bold))
+	}
+}
 
 func TestFormatWindowRow_LongNameNotElided(t *testing.T) {
 	st := newTreeState()

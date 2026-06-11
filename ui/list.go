@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/lunemis/mux/tmux"
 )
 
@@ -130,7 +131,17 @@ func formatSessionRow(s tmux.Session, expanded, selected bool, width int, label 
 		branch = " " + s.GitBranch
 	}
 
-	text := fmt.Sprintf("%s %s %-18s %s", chevron, status, name, ago)
+	// Bold the session name on non-selected rows. The selected row gets its bold
+	// treatment from the whole-row style below, so leave the name plain there to
+	// avoid double-wrapping. Pad the name manually (instead of %-18s) because fmt
+	// counts the embedded ANSI bytes as characters, which would break alignment.
+	nameField := fmt.Sprintf("%-*s", maxSessionNameDisplay, name)
+	if !selected {
+		pad := strings.Repeat(" ", maxSessionNameDisplay-ansi.StringWidth(name))
+		nameField = lipgloss.NewStyle().Bold(true).Render(name) + pad
+	}
+
+	text := fmt.Sprintf("%s %s %s %s", chevron, status, nameField, ago)
 	text += styledIcon + branch
 	text = overlayLabel(text, label)
 	extraWidth := 0
