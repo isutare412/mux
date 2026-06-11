@@ -309,15 +309,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyFilter()
 		return m, nil
 
-	case sessionKilledMsg:
+	case killedMsg:
 		if msg.err != nil {
 			m.err = msg.err
 		}
 		m.mode = modeList
-		if msg.name != "" {
+		if !msg.done {
+			return m, nil
+		}
+		if msg.kind == itemSession {
 			return m, loadSessions
 		}
-		return m, nil
+		return m, tea.Batch(loadSessions, loadWindows(msg.session))
 	}
 
 	switch m.mode {
@@ -390,7 +393,7 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "x":
 			if it := m.currentItem(); it != nil && it.kind == itemSession {
 				m.mode = modeConfirmKill
-				m.confirmKillMod = newConfirmKillModel(it.session.Name)
+				m.confirmKillMod = newConfirmKillModel(killTargetForItem(*it))
 			}
 
 		case "r":
