@@ -38,6 +38,7 @@ const (
 	modeRename
 	modeFilter
 	modeConfirmKill
+	modeJump
 )
 
 // Model is the top-level Bubble Tea model for the session manager TUI.
@@ -328,6 +329,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateFilter(msg)
 	case modeConfirmKill:
 		return m.updateConfirmKill(msg)
+	case modeJump:
+		return m.updateJump(msg)
 	default:
 		return m.updateList(msg)
 	}
@@ -404,6 +407,10 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
+		case "s":
+			m.mode = modeJump
+			return m, nil
+
 		case "/":
 			m.mode = modeFilter
 			m.filterMod = newFilterModel(m.filterText)
@@ -416,6 +423,32 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	return m, nil
+}
+
+// updateJump handles keys while jump mode is active. A label key moves the
+// cursor to that row and exits to list mode (it does NOT attach); esc or any
+// other key cancels jump mode.
+func (m Model) updateJump(msg tea.Msg) (tea.Model, tea.Cmd) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	if key.String() == "esc" {
+		m.mode = modeList
+		return m, nil
+	}
+	for i, label := range m.labels {
+		if label != "" && label == key.String() {
+			m.mode = modeList
+			m.focusSession = ""
+			m.focusWindow = -1
+			m.cursor = i
+			return m, m.refreshCurrentPreview()
+		}
+	}
+	// Any other key cancels jump mode.
+	m.mode = modeList
 	return m, nil
 }
 
