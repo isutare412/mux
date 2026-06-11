@@ -74,6 +74,37 @@ var (
 	claudeInfoCacheMu sync.Mutex
 )
 
+const configDirEnvTTL = 30 * time.Second
+
+type cachedConfigDirEnv struct {
+	value     string
+	expiresAt time.Time
+}
+
+var (
+	configDirEnvCache   = make(map[int]cachedConfigDirEnv) // pid → CLAUDE_CONFIG_DIR value
+	configDirEnvCacheMu sync.Mutex
+)
+
+// configDirEnv returns the CLAUDE_CONFIG_DIR value for process pid, memoized with
+// a short TTL because process env reads (ps eww) are expensive and loadClaudeInfo
+// runs on every refresh tick.
+func configDirEnv(pid int) string {
+	configDirEnvCacheMu.Lock()
+	if c, ok := configDirEnvCache[pid]; ok && time.Now().Before(c.expiresAt) {
+		configDirEnvCacheMu.Unlock()
+		return c.value
+	}
+	configDirEnvCacheMu.Unlock()
+
+	v := configDirEnvReader(pid)
+
+	configDirEnvCacheMu.Lock()
+	configDirEnvCache[pid] = cachedConfigDirEnv{value: v, expiresAt: time.Now().Add(configDirEnvTTL)}
+	configDirEnvCacheMu.Unlock()
+	return v
+}
+
 // FindClaudeSession locates a Claude Code session file for a given tmux pane PID.
 // It scans child processes to find the Claude PID, then reads its session file.
 func FindClaudeSession(panePID int) (sessionID string, cwd string, err error) {

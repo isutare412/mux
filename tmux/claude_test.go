@@ -258,6 +258,39 @@ func TestConfigDirFromTokens(t *testing.T) {
 	}
 }
 
+// stubConfigDirEnv replaces the platform env reader with fn and clears the env
+// cache, restoring both on test cleanup. The returned counter records how many
+// times fn was invoked (i.e. cache misses).
+func stubConfigDirEnv(t *testing.T, fn func(pid int) string) *int {
+	t.Helper()
+	calls := 0
+	old := configDirEnvReader
+	configDirEnvReader = func(pid int) string {
+		calls++
+		return fn(pid)
+	}
+	configDirEnvCacheMu.Lock()
+	configDirEnvCache = make(map[int]cachedConfigDirEnv)
+	configDirEnvCacheMu.Unlock()
+	t.Cleanup(func() { configDirEnvReader = old })
+	return &calls
+}
+
+func TestConfigDirEnvCaches(t *testing.T) {
+	calls := stubConfigDirEnv(t, func(pid int) string {
+		return "/opt/claude-work"
+	})
+	if got := configDirEnv(9001); got != "/opt/claude-work" {
+		t.Fatalf("configDirEnv = %q, want /opt/claude-work", got)
+	}
+	if got := configDirEnv(9001); got != "/opt/claude-work" {
+		t.Fatalf("second configDirEnv = %q, want /opt/claude-work", got)
+	}
+	if *calls != 1 {
+		t.Errorf("reader called %d times, want 1 (cached)", *calls)
+	}
+}
+
 func TestTranscriptAwaitingTool(t *testing.T) {
 	dir := t.TempDir()
 
