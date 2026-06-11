@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -145,29 +146,70 @@ func LoadClaudeInfo(panePID int) (*ClaudeInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	sf, configDir, err := resolveClaudeSession(home, panePID)
+	if err != nil {
+		return nil, err
+	}
+	return buildClaudeInfo(configDir, sf), nil
+}
 
+// readSessionFile reads and decodes configDir/sessions/<pidStr>.json. The bool is
+// false when the file is missing or malformed.
+func readSessionFile(configDir, pidStr string) (claudeSessionFile, bool) {
+	data, err := os.ReadFile(filepath.Join(configDir, sessionsDir, pidStr+".json"))
+	if err != nil {
+		return claudeSessionFile{}, false
+	}
+	var sf claudeSessionFile
+	if json.Unmarshal(data, &sf) != nil {
+		return claudeSessionFile{}, false
+	}
+	return sf, true
+}
+
+// resolveClaudeSession finds the Claude session file for a tmux pane PID and the
+// config dir it lives in. It scans the pane shell's child PIDs in two passes:
+// pass 1 checks the default ~/.claude (cheap stats, no env reads); pass 2 reads
+// each child's CLAUDE_CONFIG_DIR and checks that dir. The two passes ensure
+// default-config panes never trigger a process-env read.
+func resolveClaudeSession(home string, panePID int) (claudeSessionFile, string, error) {
 	out, err := runner.Output("pgrep", "-P", fmt.Sprintf("%d", panePID))
 	if err != nil {
-		return nil, fmt.Errorf("no child processes for pane %d", panePID)
+		return claudeSessionFile{}, "", fmt.Errorf("no child processes for pane %d", panePID)
+	}
+	pids := strings.Fields(string(out))
+
+	defaultDir := filepath.Join(home, claudeDir)
+	for _, pidStr := range pids {
+		if sf, ok := readSessionFile(defaultDir, pidStr); ok {
+			return sf, defaultDir, nil
+		}
 	}
 
-	sessDir := filepath.Join(home, claudeDir, sessionsDir)
-	for _, pidStr := range strings.Fields(string(out)) {
-		data, err := os.ReadFile(filepath.Join(sessDir, pidStr+".json"))
+	for _, pidStr := range pids {
+		pid, err := strconv.Atoi(pidStr)
 		if err != nil {
 			continue
 		}
-		var sf claudeSessionFile
-		if err := json.Unmarshal(data, &sf); err != nil {
+		env := configDirEnv(pid)
+		if env == "" {
 			continue
 		}
-		return buildClaudeInfo(home, sf), nil
+		dir := expandHome(env, home)
+		if dir == defaultDir {
+			continue
+		}
+		if sf, ok := readSessionFile(dir, pidStr); ok {
+			return sf, dir, nil
+		}
 	}
-	return nil, fmt.Errorf("no claude session found for pane %d", panePID)
+
+	return claudeSessionFile{}, "", fmt.Errorf("no claude session found for pane %d", panePID)
 }
 
-// buildClaudeInfo assembles (and caches) a ClaudeInfo from a session file.
-func buildClaudeInfo(home string, sf claudeSessionFile) *ClaudeInfo {
+// buildClaudeInfo assembles (and caches) a ClaudeInfo from a session file
+// located in configDir.
+func buildClaudeInfo(configDir string, sf claudeSessionFile) *ClaudeInfo {
 	claudeInfoCacheMu.Lock()
 	if c, ok := claudeInfoCache[sf.SessionID]; ok && time.Now().Before(c.expiresAt) {
 		claudeInfoCacheMu.Unlock()
@@ -175,7 +217,7 @@ func buildClaudeInfo(home string, sf claudeSessionFile) *ClaudeInfo {
 	}
 	claudeInfoCacheMu.Unlock()
 
-	jsonlPath := filepath.Join(home, claudeDir, projectsDir, encodePath(sf.CWD), sf.SessionID+".jsonl")
+	jsonlPath := filepath.Join(configDir, projectsDir, encodePath(sf.CWD), sf.SessionID+".jsonl")
 	awaiting, _ := transcriptAwaitingTool(jsonlPath)
 	recap, _ := loadRecap(jsonlPath)
 

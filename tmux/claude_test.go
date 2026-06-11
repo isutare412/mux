@@ -2,6 +2,7 @@ package tmux
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -331,4 +332,98 @@ func TestTranscriptAwaitingTool(t *testing.T) {
 			t.Errorf("transcriptAwaitingTool(%s) = %v, want %v", filepath.Base(c.path), got, c.want)
 		}
 	}
+}
+
+// writeSessionFile creates configDir/sessions/<pid>.json with the given session.
+func writeSessionFile(t *testing.T, configDir string, pid int, sf claudeSessionFile) {
+	t.Helper()
+	dir := filepath.Join(configDir, sessionsDir)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(sf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%d.json", pid)), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolveClaudeSession(t *testing.T) {
+	t.Run("default dir, no env read", func(t *testing.T) {
+		home := t.TempDir()
+		writeSessionFile(t, filepath.Join(home, claudeDir), 200, claudeSessionFile{
+			PID: 200, SessionID: "sid-default", CWD: "/tmp/proj", Status: "busy",
+		})
+		calls := stubConfigDirEnv(t, func(pid int) string { return "" })
+		withMock(t, func(m *mockRunner) {
+			m.OnOutput([]byte("199\n200\n"), nil, "pgrep", "-P", "100")
+
+			sf, dir, err := resolveClaudeSession(home, 100)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if sf.SessionID != "sid-default" {
+				t.Errorf("SessionID = %q, want sid-default", sf.SessionID)
+			}
+			if want := filepath.Join(home, claudeDir); dir != want {
+				t.Errorf("dir = %q, want %q", dir, want)
+			}
+			if *calls != 0 {
+				t.Errorf("env reader called %d times, want 0 (fast path)", *calls)
+			}
+		})
+	})
+
+	t.Run("enterprise dir via env", func(t *testing.T) {
+		home := t.TempDir()
+		entDir := filepath.Join(home, ".claude-enterprise")
+		writeSessionFile(t, entDir, 200, claudeSessionFile{
+			PID: 200, SessionID: "sid-ent", CWD: "/tmp/proj", Status: "busy",
+		})
+		stubConfigDirEnv(t, func(pid int) string {
+			if pid == 200 {
+				return "~/.claude-enterprise"
+			}
+			return ""
+		})
+		withMock(t, func(m *mockRunner) {
+			m.OnOutput([]byte("199\n200\n"), nil, "pgrep", "-P", "100")
+
+			sf, dir, err := resolveClaudeSession(home, 100)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if sf.SessionID != "sid-ent" {
+				t.Errorf("SessionID = %q, want sid-ent", sf.SessionID)
+			}
+			if dir != entDir {
+				t.Errorf("dir = %q, want %q", dir, entDir)
+			}
+		})
+	})
+
+	t.Run("no session found", func(t *testing.T) {
+		home := t.TempDir()
+		stubConfigDirEnv(t, func(pid int) string { return "" })
+		withMock(t, func(m *mockRunner) {
+			m.OnOutput([]byte("199\n200\n"), nil, "pgrep", "-P", "100")
+
+			if _, _, err := resolveClaudeSession(home, 100); err == nil {
+				t.Error("expected error when no session file exists")
+			}
+		})
+	})
+
+	t.Run("no child processes", func(t *testing.T) {
+		home := t.TempDir()
+		withMock(t, func(m *mockRunner) {
+			m.OnOutput(nil, fmt.Errorf("no children"), "pgrep", "-P", "100")
+
+			if _, _, err := resolveClaudeSession(home, 100); err == nil {
+				t.Error("expected error when pgrep fails")
+			}
+		})
+	})
 }
