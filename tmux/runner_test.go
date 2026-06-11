@@ -139,3 +139,15 @@ func TestKillSessionWithMock(t *testing.T) {
 		}
 	})
 }
+
+func TestKillWindowWithMock(t *testing.T) {
+	withMock(t, func(m *mockRunner) {
+		if err := KillWindow("dev", 2); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := "tmux kill-window -t dev:2"
+		if m.runs[0] != expected {
+			t.Errorf("expected %q, got %q", expected, m.runs[0])
+		}
+	})
+}
