@@ -143,11 +143,11 @@ func refreshPreview(key previewKey) tea.Cmd {
 
 func loadTokenUsage(sessionName string, panePID int) tea.Cmd {
 	return func() tea.Msg {
-		sessionID, cwd, err := tmux.FindClaudeSession(panePID)
+		sessionID, cwd, configDir, err := tmux.FindClaudeSession(panePID)
 		if err != nil {
 			return tokenUsageLoadedMsg{sessionName: sessionName}
 		}
-		usage, _ := tmux.LoadTokenUsage(sessionID, cwd)
+		usage, _ := tmux.LoadTokenUsage(sessionID, cwd, configDir)
 		return tokenUsageLoadedMsg{sessionName: sessionName, usage: usage}
 	}
 }

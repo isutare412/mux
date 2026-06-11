@@ -350,6 +350,63 @@ func writeSessionFile(t *testing.T, configDir string, pid int, sf claudeSessionF
 	}
 }
 
+func TestFindClaudeSessionReturnsConfigDir(t *testing.T) {
+	// Point HOME at a temp dir so os.UserHomeDir() inside FindClaudeSession
+	// resolves there.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	entDir := filepath.Join(home, ".claude-enterprise")
+	writeSessionFile(t, entDir, 200, claudeSessionFile{
+		PID: 200, SessionID: "sid-ent", CWD: "/tmp/proj", Status: "busy",
+	})
+	stubConfigDirEnv(t, func(pid int) string {
+		if pid == 200 {
+			return "~/.claude-enterprise"
+		}
+		return ""
+	})
+	withMock(t, func(m *mockRunner) {
+		m.OnOutput([]byte("200\n"), nil, "pgrep", "-P", "100")
+
+		sessionID, cwd, configDir, err := FindClaudeSession(100)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sessionID != "sid-ent" {
+			t.Errorf("sessionID = %q, want sid-ent", sessionID)
+		}
+		if cwd != "/tmp/proj" {
+			t.Errorf("cwd = %q, want /tmp/proj", cwd)
+		}
+		if configDir != entDir {
+			t.Errorf("configDir = %q, want %q", configDir, entDir)
+		}
+	})
+}
+
+func TestLoadTokenUsageUsesConfigDir(t *testing.T) {
+	configDir := t.TempDir()
+	cwd := "/tmp/proj"
+	sessionID := "sid-1"
+	jsonlDir := filepath.Join(configDir, projectsDir, encodePath(cwd))
+	if err := os.MkdirAll(jsonlDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"type":"assistant","message":{"role":"assistant","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}` + "\n"
+	if err := os.WriteFile(filepath.Join(jsonlDir, sessionID+".jsonl"), []byte(line), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	usage, err := LoadTokenUsage(sessionID, cwd, configDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if usage.InputTokens != 100 || usage.OutputTokens != 50 {
+		t.Errorf("usage = %+v, want input 100 output 50", usage)
+	}
+}
+
 func TestResolveClaudeSession(t *testing.T) {
 	t.Run("default dir, no env read", func(t *testing.T) {
 		home := t.TempDir()

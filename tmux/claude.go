@@ -106,36 +106,18 @@ func configDirEnv(pid int) string {
 	return v
 }
 
-// FindClaudeSession locates a Claude Code session file for a given tmux pane PID.
-// It scans child processes to find the Claude PID, then reads its session file.
-func FindClaudeSession(panePID int) (sessionID string, cwd string, err error) {
+// FindClaudeSession locates a Claude Code session for a given tmux pane PID and
+// returns its session ID, working dir, and the config dir it was found in.
+func FindClaudeSession(panePID int) (sessionID, cwd, configDir string, err error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-
-	// Get child PIDs of the pane shell
-	out, err := runner.Output("pgrep", "-P", fmt.Sprintf("%d", panePID))
+	sf, dir, err := resolveClaudeSession(home, panePID)
 	if err != nil {
-		return "", "", fmt.Errorf("no child processes for pane %d", panePID)
+		return "", "", "", err
 	}
-
-	sessDir := filepath.Join(home, claudeDir, sessionsDir)
-
-	for _, pidStr := range strings.Fields(string(out)) {
-		path := filepath.Join(sessDir, pidStr+".json")
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		var sf claudeSessionFile
-		if err := json.Unmarshal(data, &sf); err != nil {
-			continue
-		}
-		return sf.SessionID, sf.CWD, nil
-	}
-
-	return "", "", fmt.Errorf("no claude session found for pane %d", panePID)
+	return sf.SessionID, sf.CWD, dir, nil
 }
 
 // LoadClaudeInfo resolves the Claude session for a tmux pane PID and returns its
@@ -233,9 +215,9 @@ func buildClaudeInfo(configDir string, sf claudeSessionFile) *ClaudeInfo {
 	return info
 }
 
-// LoadTokenUsage reads and aggregates token usage from a Claude session's JSONL log.
-// Results are cached with a TTL to avoid re-reading large files on every tick.
-func LoadTokenUsage(sessionID, cwd string) (*TokenUsage, error) {
+// LoadTokenUsage reads and aggregates token usage from a Claude session's JSONL
+// log in configDir. Results are cached with a TTL to avoid re-reading large files.
+func LoadTokenUsage(sessionID, cwd, configDir string) (*TokenUsage, error) {
 	usageCacheMu.Lock()
 	if cached, ok := usageCache[sessionID]; ok && time.Now().Before(cached.expiresAt) {
 		usageCacheMu.Unlock()
@@ -243,13 +225,7 @@ func LoadTokenUsage(sessionID, cwd string) (*TokenUsage, error) {
 	}
 	usageCacheMu.Unlock()
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-
-	encoded := encodePath(cwd)
-	jsonlPath := filepath.Join(home, claudeDir, projectsDir, encoded, sessionID+".jsonl")
+	jsonlPath := filepath.Join(configDir, projectsDir, encodePath(cwd), sessionID+".jsonl")
 
 	usage, err := parseTokenUsage(jsonlPath)
 	if err != nil {
