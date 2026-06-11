@@ -253,6 +253,22 @@ func encodePath(path string) string {
 	return strings.ReplaceAll(path, string(os.PathSeparator), "-")
 }
 
+// expandHome expands a leading ~ or $HOME in path to the home directory. Paths
+// that are already absolute (or empty) are returned unchanged. CLAUDE_CONFIG_DIR
+// is usually pre-expanded by the shell, but a literal ~ is handled defensively.
+func expandHome(path, home string) string {
+	switch {
+	case path == "~", path == "$HOME":
+		return home
+	case strings.HasPrefix(path, "~/"):
+		return filepath.Join(home, path[2:])
+	case strings.HasPrefix(path, "$HOME/"):
+		return filepath.Join(home, path[len("$HOME/"):])
+	default:
+		return path
+	}
+}
+
 // FormatTokens formats a token count into a short human-readable string.
 func FormatTokens(n int) string {
 	switch {

@@ -202,6 +202,26 @@ func TestClaudeSessionFileDecode(t *testing.T) {
 	}
 }
 
+func TestExpandHome(t *testing.T) {
+	home := "/Users/alice"
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"~", "/Users/alice"},
+		{"~/.claude-enterprise", "/Users/alice/.claude-enterprise"},
+		{"$HOME", "/Users/alice"},
+		{"$HOME/.claude-enterprise", "/Users/alice/.claude-enterprise"},
+		{"/opt/claude-work", "/opt/claude-work"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		if got := expandHome(tt.in, home); got != tt.want {
+			t.Errorf("expandHome(%q, %q) = %q, want %q", tt.in, home, got, tt.want)
+		}
+	}
+}
+
 func TestTranscriptAwaitingTool(t *testing.T) {
 	dir := t.TempDir()
 
