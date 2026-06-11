@@ -1,6 +1,9 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
+	"github.com/lunemis/mux/tmux"
+)
 
 var (
 	// Colors
@@ -18,9 +21,10 @@ var (
 	colorClaudeWaiting = lipgloss.Color("#F59E0B") // orange
 	colorClaudeIdle    = lipgloss.Color("#22C55E") // green
 
-	// colorClaude is claude's brand orange used for window names of windows
-	// running claude. Mirrors aiToolMap["claude"].Color.
-	colorClaude = lipgloss.Color("#F59E0B")
+	// colorClaude is claude's brand orange for window names of windows running
+	// claude. Sourced from the canonical AI-tool registry so it cannot drift
+	// from the claude icon color.
+	colorClaude = lipgloss.Color(claudeBrandColorHex())
 
 	// Styles
 	titleStyle = lipgloss.NewStyle().
@@ -42,3 +46,11 @@ var (
 			Foreground(colorAccent).
 			Bold(true)
 )
+
+// claudeBrandColorHex returns claude's brand color hex from the AI-tool
+// registry, the single source of truth shared with the claude icon. Returns
+// "" if claude is somehow unregistered, which yields an unstyled name.
+func claudeBrandColorHex() string {
+	tool, _ := tmux.LookupAITool("claude")
+	return tool.Color
+}
