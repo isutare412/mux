@@ -229,8 +229,12 @@ func claudeSuffix(info tmux.ClaudeInfo) string {
 	if elapsed != "" {
 		out += " " + elapsed
 	}
-	if info.Recap != "" {
-		out += "  " + lipgloss.NewStyle().Foreground(color).Render(info.Recap)
+	recap := info.Recap
+	if info.State == tmux.ClaudeWaiting {
+		recap = "Needs your input"
+	}
+	if recap != "" {
+		out += "  " + lipgloss.NewStyle().Foreground(color).Render(recap)
 	}
 	return out
 }

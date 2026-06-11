@@ -99,8 +99,25 @@ func TestFormatWindowRowRollup(t *testing.T) {
 	st.claudeCache[2] = tmux.ClaudeInfo{State: tmux.ClaudeWaiting, Recap: "needs perm"}
 	w := &tmux.Window{Index: 0, Name: "win"}
 	row := formatWindowRow("sess", w, false, false, 80, &st, "")
-	if !strings.Contains(stripANSI(row), "needs perm") {
-		t.Errorf("window row missing rolled-up recap: %q", stripANSI(row))
+	if !strings.Contains(stripANSI(row), "Needs your input") {
+		t.Errorf("window row missing waiting label: %q", stripANSI(row))
+	}
+}
+
+func TestFormatPaneRowWaitingOverride(t *testing.T) {
+	st := newTreeState()
+	p := &tmux.Pane{Index: 1, Command: "claude", PID: 9}
+	st.claudeCache[9] = tmux.ClaudeInfo{
+		State: tmux.ClaudeWaiting,
+		Recap: "colorizing the picker",
+		Since: time.Now().Add(-2 * time.Minute),
+	}
+	row := stripANSI(formatPaneRow(p, false, 80, &st))
+	if !strings.Contains(row, "Needs your input") {
+		t.Errorf("waiting row missing override label: %q", row)
+	}
+	if strings.Contains(row, "colorizing the picker") {
+		t.Errorf("waiting row should hide recap subject: %q", row)
 	}
 }
 
