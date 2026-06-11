@@ -75,18 +75,18 @@ func renderSessionList(sessions []tmux.Session, cursor int, filter string, width
 	return renderListView(items, cursor, filter, &state, width, height, nil, false)
 }
 
-// overlayLabel replaces the first rune of text with the jump label, styled in
-// the accent color. The label is one cell wide — the same width as the rune it
-// replaces (the chevron on session rows, or the leading indent space on window
-// rows) — so the row does not shift horizontally. An empty label returns text
-// unchanged.
-func overlayLabel(text, label string) string {
+// styleRow applies base to text. When label is non-empty, the first cell of text
+// is replaced by the jump label, rendered with the accent color on top of base
+// (so it keeps base's background — e.g. the cursor row's highlight). The label and
+// the remainder are each rendered self-contained, so the label's SGR reset never
+// leaks into the rest of the row.
+func styleRow(text string, base lipgloss.Style, label string) string {
 	if label == "" {
-		return text
+		return base.Render(text)
 	}
 	_, size := utf8.DecodeRuneInString(text)
-	styled := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(label)
-	return styled + text[size:]
+	labelStyle := base.Bold(true).Foreground(colorAccent)
+	return labelStyle.Render(label) + base.Render(text[size:])
 }
 
 func formatItemRow(it listItem, selected bool, width int, t *treeState, label string) string {
@@ -143,24 +143,20 @@ func formatSessionRow(s tmux.Session, expanded, selected bool, width int, label 
 
 	text := fmt.Sprintf("%s %s %s %s", chevron, status, nameField, ago)
 	text += styledIcon + branch
-	text = overlayLabel(text, label)
 	extraWidth := 0
 	if iconColor != "" {
 		extraWidth = 1
 	}
 	row := padOrTruncate(text, width-extraWidth)
 
+	base := lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF"))
 	if selected {
-		return lipgloss.NewStyle().
+		base = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(colorCursor).
-			Background(colorSelected).
-			Render(row)
+			Background(colorSelected)
 	}
-
-	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#9CA3AF")).
-		Render(row)
+	return styleRow(row, base, label)
 }
 
 func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool, width int, t *treeState, label string) string {
@@ -189,19 +185,16 @@ func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool
 		text += claudeSuffix(info)
 	}
 
-	text = overlayLabel(text, label)
 	row := padOrTruncate(text, width)
 
+	base := lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF"))
 	if selected {
-		return lipgloss.NewStyle().
+		base = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(colorCursor).
-			Background(colorSelected).
-			Render(row)
+			Background(colorSelected)
 	}
-	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#9CA3AF")).
-		Render(row)
+	return styleRow(row, base, label)
 }
 
 func formatPaneRow(p *tmux.Pane, selected bool, width int, t *treeState) string {
@@ -218,16 +211,14 @@ func formatPaneRow(p *tmux.Pane, selected bool, width int, t *treeState) string 
 
 	row := padOrTruncate(text, width)
 
+	base := lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
 	if selected {
-		return lipgloss.NewStyle().
+		base = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(colorCursor).
-			Background(colorSelected).
-			Render(row)
+			Background(colorSelected)
 	}
-	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#6B7280")).
-		Render(row)
+	return styleRow(row, base, "")
 }
 
 // claudeSuffix renders " <icon> <elapsed>  <recap>" for a Claude pane. The whole

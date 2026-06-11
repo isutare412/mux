@@ -40,8 +40,8 @@ func TestFormatSessionRow_NameNotBoldWhenSelected(t *testing.T) {
 
 func TestFormatSessionRow_BoldPreservesWidth(t *testing.T) {
 	s := tmux.Session{Name: "mux"}
-	plain := formatSessionRow(s, false, true, 60, "")  // selected: plain name
-	bold := formatSessionRow(s, false, false, 60, "")  // non-selected: bold name
+	plain := formatSessionRow(s, false, true, 60, "") // selected: plain name
+	bold := formatSessionRow(s, false, false, 60, "") // non-selected: bold name
 	if ansi.StringWidth(plain) != ansi.StringWidth(bold) {
 		t.Errorf("bold changed row width: %d vs %d", ansi.StringWidth(plain), ansi.StringWidth(bold))
 	}
@@ -157,5 +157,44 @@ func TestFormatWindowRow_OrangePreservesWidth(t *testing.T) {
 	orange := formatWindowRow("sess", w, false, false, 60, &st, "") // non-selected: orange name
 	if ansi.StringWidth(plain) != ansi.StringWidth(orange) {
 		t.Errorf("orange changed row width: %d vs %d", ansi.StringWidth(plain), ansi.StringWidth(orange))
+	}
+}
+
+// styleOpen returns the leading SGR sequence lipgloss emits for style s, by
+// probing it against a sentinel rune and slicing off everything before it.
+func styleOpen(s lipgloss.Style) string {
+	probe := s.Render("X")
+	return probe[:strings.Index(probe, "X")]
+}
+
+func TestFormatSessionRow_JumpLabelDoesNotLeakIntoName(t *testing.T) {
+	s := tmux.Session{Name: "mux"}
+	row := formatSessionRow(s, false, false, 60, "q") // "q" is not in "mux"
+
+	grayOpen := styleOpen(lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF")))
+	labelIdx := strings.Index(row, "q")
+	if labelIdx < 0 {
+		t.Fatalf("label \"q\" not found in %q", row)
+	}
+	if !strings.Contains(row[labelIdx:], grayOpen) {
+		t.Errorf("base gray not re-asserted after jump label; name washes out: %q", row)
+	}
+}
+
+func TestFormatSessionRow_JumpLabelKeepsCursorHighlight(t *testing.T) {
+	s := tmux.Session{Name: "mux"}
+	row := formatSessionRow(s, false, true, 60, "q") // selected + jump label
+
+	// lipgloss collapses bold+fg+bg into a single SGR sequence, so probe the full
+	// base style and look for its background parameter rather than a standalone
+	// background open sequence (which never appears verbatim in the combined form).
+	bgOpen := styleOpen(lipgloss.NewStyle().Background(colorSelected))
+	bgParam := strings.TrimSuffix(strings.TrimPrefix(bgOpen, "\x1b["), "m")
+	labelIdx := strings.Index(row, "q")
+	if labelIdx < 0 {
+		t.Fatalf("label \"q\" not found in %q", row)
+	}
+	if !strings.Contains(row[labelIdx:], bgParam) {
+		t.Errorf("selected background not present after jump label; highlight bar breaks: %q", row)
 	}
 }
