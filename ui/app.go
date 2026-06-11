@@ -675,7 +675,7 @@ func (m Model) viewMain() string {
 	title := titleStyle.Render("⚡ tmux sessions " + count)
 
 	// Help bar
-	help := renderHelp()
+	help := renderHelp(m.mode)
 
 	// Filter / confirm bar
 	var extraBar string
@@ -748,9 +748,16 @@ func (m Model) viewWithOverlay(overlay string) string {
 		box)
 }
 
-func renderHelp() string {
+func renderHelp(m mode) string {
+	if m == modeJump {
+		return helpKeyStyle.Render("a…z") + " " + helpStyle.Render("jump") +
+			helpStyle.Render("  •  ") +
+			helpKeyStyle.Render("esc") + " " + helpStyle.Render("cancel")
+	}
+
 	keys := []struct{ key, desc string }{
 		{"↑↓/jk", "navigate"},
+		{"s", "jump"},
 		{"tab", "expand"},
 		{"⇧tab", "collapse"},
 		{"enter", "attach"},

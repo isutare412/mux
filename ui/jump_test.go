@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -102,5 +103,22 @@ func TestJumpModeNonLabelCancels(t *testing.T) {
 
 	if m.mode != modeList {
 		t.Fatalf("mode = %v, want modeList after non-label key", m.mode)
+	}
+}
+
+func TestRenderHelp_JumpModeHint(t *testing.T) {
+	help := renderHelp(modeJump)
+	if !strings.Contains(help, "jump") {
+		t.Errorf("jump-mode help should mention jump: %q", help)
+	}
+	if !strings.Contains(help, "cancel") {
+		t.Errorf("jump-mode help should mention cancel: %q", help)
+	}
+}
+
+func TestRenderHelp_ListModeShowsJumpKey(t *testing.T) {
+	help := renderHelp(modeList)
+	if !strings.Contains(help, "jump") {
+		t.Errorf("list-mode help should advertise jump: %q", help)
 	}
 }
