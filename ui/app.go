@@ -45,6 +45,7 @@ type Model struct {
 	sessions       []tmux.Session
 	filtered       []tmux.Session
 	items          []listItem // flattened tree of (sessions, windows, panes)
+	labels         []string   // jump labels, parallel to items ("" = no label)
 	tree           treeState
 	cursor         int
 	mode           mode
@@ -577,6 +578,7 @@ func (m *Model) currentSessionName() string {
 // state changes.
 func (m *Model) rebuildItems() {
 	m.items = flatten(m.filtered, &m.tree)
+	m.labels = assignLabels(m.items)
 	if m.cursor >= len(m.items) {
 		m.cursor = max(0, len(m.items)-1)
 	}
