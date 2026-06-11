@@ -200,7 +200,7 @@ func buildClaudeInfo(configDir string, sf claudeSessionFile) *ClaudeInfo {
 	}
 	claudeInfoCacheMu.Unlock()
 
-	jsonlPath := filepath.Join(configDir, projectsDir, encodePath(sf.CWD), sf.SessionID+".jsonl")
+	jsonlPath := resolveTranscriptPath(configDir, sf.CWD, sf.SessionID)
 	awaiting, _ := transcriptAwaitingTool(jsonlPath)
 	recap, _ := loadRecap(jsonlPath)
 
@@ -226,7 +226,7 @@ func LoadTokenUsage(sessionID, cwd, configDir string) (*TokenUsage, error) {
 	}
 	usageCacheMu.Unlock()
 
-	jsonlPath := filepath.Join(configDir, projectsDir, encodePath(cwd), sessionID+".jsonl")
+	jsonlPath := resolveTranscriptPath(configDir, cwd, sessionID)
 
 	usage, err := parseTokenUsage(jsonlPath)
 	if err != nil {
@@ -301,6 +301,40 @@ func estimateCost(u *TokenUsage) float64 {
 // "/Users/foo/bar" → "-Users-foo-bar"
 func encodePath(path string) string {
 	return strings.ReplaceAll(path, string(os.PathSeparator), "-")
+}
+
+// resolveTranscriptPath locates a session's transcript JSONL under configDir.
+// Claude Code normally files transcripts at projects/<encoded-cwd>/, but for a
+// session running inside a git worktree it uses the MAIN repository's path
+// rather than the worktree cwd — so the encoded-cwd directory doesn't exist.
+// We try the direct encoded path first (fast, common case), then fall back to
+// searching every project dir by the globally-unique session ID. If nothing is
+// found we return the direct path unchanged so downstream open/stat errors are
+// reported as before.
+func resolveTranscriptPath(configDir, cwd, sessionID string) string {
+	direct := filepath.Join(configDir, projectsDir, encodePath(cwd), sessionID+".jsonl")
+	if _, err := os.Stat(direct); err == nil {
+		return direct
+	}
+
+	matches, _ := filepath.Glob(filepath.Join(configDir, projectsDir, "*", sessionID+".jsonl"))
+	if len(matches) == 0 {
+		return direct
+	}
+	best := matches[0]
+	if len(matches) > 1 {
+		var bestMod time.Time
+		if info, err := os.Stat(best); err == nil {
+			bestMod = info.ModTime()
+		}
+		for _, m := range matches[1:] {
+			info, err := os.Stat(m)
+			if err == nil && info.ModTime().After(bestMod) {
+				best, bestMod = m, info.ModTime()
+			}
+		}
+	}
+	return best
 }
 
 // expandHome expands a leading ~ or $HOME in path to the home directory. Paths

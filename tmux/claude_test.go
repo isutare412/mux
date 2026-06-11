@@ -8,6 +8,52 @@ import (
 	"testing"
 )
 
+func TestResolveTranscriptPathDirectHit(t *testing.T) {
+	configDir := t.TempDir()
+	cwd := "/Users/me/repo/main"
+	proj := filepath.Join(configDir, "projects", encodePath(cwd))
+	if err := os.MkdirAll(proj, 0755); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(proj, "s.jsonl")
+	if err := os.WriteFile(want, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveTranscriptPath(configDir, cwd, "s"); got != want {
+		t.Errorf("resolveTranscriptPath = %q, want direct hit %q", got, want)
+	}
+}
+
+func TestResolveTranscriptPathWorktreeFallback(t *testing.T) {
+	configDir := t.TempDir()
+	// Claude Code files a worktree session's transcript under the MAIN repo's
+	// project dir, not the worktree cwd's encoded dir.
+	mainProj := filepath.Join(configDir, "projects", "-Users-me-repo-main")
+	if err := os.MkdirAll(mainProj, 0755); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(mainProj, "abc-123.jsonl")
+	if err := os.WriteFile(want, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// The worktree cwd encodes to a different, nonexistent project dir.
+	got := resolveTranscriptPath(configDir, "/Users/me/repo/wt-feature", "abc-123")
+	if got != want {
+		t.Errorf("resolveTranscriptPath = %q, want worktree fallback %q", got, want)
+	}
+}
+
+func TestResolveTranscriptPathMissingReturnsDirect(t *testing.T) {
+	configDir := t.TempDir()
+	cwd := "/Users/me/repo/main"
+	want := filepath.Join(configDir, "projects", encodePath(cwd), "none.jsonl")
+	// No file exists anywhere; should return the direct encoded path so
+	// downstream open/stat error handling is unchanged.
+	if got := resolveTranscriptPath(configDir, cwd, "none"); got != want {
+		t.Errorf("resolveTranscriptPath = %q, want direct path %q", got, want)
+	}
+}
+
 func TestEncodePath(t *testing.T) {
 	tests := []struct {
 		input string
