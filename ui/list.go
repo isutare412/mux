@@ -75,6 +75,19 @@ func renderSessionList(sessions []tmux.Session, cursor int, filter string, width
 	return renderListView(items, cursor, filter, &state, width, height, nil, false)
 }
 
+// rowBaseStyle returns the base style for a list row: the cursor highlight when
+// selected, otherwise the given foreground. Row formatters layer their content
+// (and the jump label, via styleRow) on top of this.
+func rowBaseStyle(selected bool, fg lipgloss.Color) lipgloss.Style {
+	if selected {
+		return lipgloss.NewStyle().
+			Bold(true).
+			Foreground(colorCursor).
+			Background(colorSelected)
+	}
+	return lipgloss.NewStyle().Foreground(fg)
+}
+
 // styleRow applies base to text. When label is non-empty, the first cell of text
 // is replaced by the jump label, rendered with the accent color on top of base
 // (so it keeps base's background — e.g. the cursor row's highlight). The label and
@@ -149,13 +162,7 @@ func formatSessionRow(s tmux.Session, expanded, selected bool, width int, label 
 	}
 	row := padOrTruncate(text, width-extraWidth)
 
-	base := lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF"))
-	if selected {
-		base = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorCursor).
-			Background(colorSelected)
-	}
+	base := rowBaseStyle(selected, lipgloss.Color("#9CA3AF"))
 	return styleRow(row, base, label)
 }
 
@@ -187,13 +194,7 @@ func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool
 
 	row := padOrTruncate(text, width)
 
-	base := lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF"))
-	if selected {
-		base = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorCursor).
-			Background(colorSelected)
-	}
+	base := rowBaseStyle(selected, lipgloss.Color("#9CA3AF"))
 	return styleRow(row, base, label)
 }
 
@@ -211,13 +212,7 @@ func formatPaneRow(p *tmux.Pane, selected bool, width int, t *treeState) string 
 
 	row := padOrTruncate(text, width)
 
-	base := lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280"))
-	if selected {
-		base = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorCursor).
-			Background(colorSelected)
-	}
+	base := rowBaseStyle(selected, lipgloss.Color("#6B7280"))
 	return styleRow(row, base, "")
 }
 
