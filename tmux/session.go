@@ -94,6 +94,11 @@ func KillWindow(session string, windowIndex int) error {
 	return runner.Run("tmux", "kill-window", "-t", fmt.Sprintf("%s:%d", session, windowIndex))
 }
 
+// KillPane destroys the pane at paneIndex in the given session window.
+func KillPane(session string, windowIndex, paneIndex int) error {
+	return runner.Run("tmux", "kill-pane", "-t", fmt.Sprintf("%s:%d.%d", session, windowIndex, paneIndex))
+}
+
 // RenameSession renames a tmux session from oldName to newName.
 func RenameSession(oldName, newName string) error {
 	return runner.Run("tmux", "rename-session", "-t", oldName, newName)

@@ -151,3 +151,15 @@ func TestKillWindowWithMock(t *testing.T) {
 		}
 	})
 }
+
+func TestKillPaneWithMock(t *testing.T) {
+	withMock(t, func(m *mockRunner) {
+		if err := KillPane("dev", 1, 3); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := "tmux kill-pane -t dev:1.3"
+		if m.runs[0] != expected {
+			t.Errorf("expected %q, got %q", expected, m.runs[0])
+		}
+	})
+}
