@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -424,6 +425,41 @@ func transcriptAwaitingTool(path string) (bool, error) {
 		}
 	}
 	return awaiting, nil
+}
+
+// goalPrefixRe matches a leading "Goal", "Goal was", "Goal is", "Goal to",
+// "Goal was to", etc., with an optional trailing colon, so recaps read
+// "colorizing the picker" instead of "Goal was colorizing the picker". The
+// \b prevents stripping words like "Goals".
+var goalPrefixRe = regexp.MustCompile(`(?i)^goal\b(\s+(was|is))?(\s+to)?\s*:?\s*`)
+
+// firstSentence returns s up to and including the first sentence-terminating
+// '.', '!' or '?' that is at end-of-string or followed by whitespace. Sentence
+// terminators are ASCII, so a byte scan is sufficient.
+func firstSentence(s string) string {
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '.', '!', '?':
+			if i+1 >= len(s) || s[i+1] == ' ' || s[i+1] == '\n' || s[i+1] == '\t' {
+				return s[:i+1]
+			}
+		}
+	}
+	return s
+}
+
+// cleanRecapText normalizes a raw recap source (away_summary, ai-title, or last
+// assistant text) into a single tidy line for the list view.
+func cleanRecapText(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndex(strings.ToLower(s), "(disable recaps in /config)"); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	s = firstSentence(s)
+	s = goalPrefixRe.ReplaceAllString(s, "")
+	s = strings.ReplaceAll(s, "`", "")
+	s = strings.TrimRight(s, ".!?")
+	return strings.TrimSpace(s)
 }
 
 // loadRecap returns the most recent ai-title in the transcript at path, or ""

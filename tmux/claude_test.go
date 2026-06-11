@@ -177,6 +177,46 @@ func TestLoadRecapMissingFile(t *testing.T) {
 	}
 }
 
+func TestCleanRecapText(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"strip disable-recaps suffix and Goal prefix",
+			"Goal was colorizing the tmux picker: bold names. Both tasks done. (disable recaps in /config)",
+			"colorizing the tmux picker: bold names"},
+		{"first sentence only",
+			"Built a flash-style jump mode. Press s then a letter.",
+			"Built a flash-style jump mode"},
+		{"Goal colon prefix and trailing dotted path",
+			"Goal: make mux detect ~/.claude and ~/.claude-enterprise.",
+			"make mux detect ~/.claude and ~/.claude-enterprise"},
+		{"Goal is prefix",
+			"Goal is preparing for the interview.",
+			"preparing for the interview"},
+		{"strip backticks, Goal was to",
+			"Goal was to extend the `x` key to kill panes.",
+			"extend the x key to kill panes"},
+		{"plain ai-title untouched",
+			"Cancel merge and rebase to main",
+			"Cancel merge and rebase to main"},
+		{"does not strip Goals (word boundary)",
+			"Goals matter here.",
+			"Goals matter here"},
+		{"empty stays empty",
+			"",
+			""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := cleanRecapText(c.in); got != c.want {
+				t.Errorf("cleanRecapText(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
 // joinLines joins JSONL lines with trailing newlines.
 func joinLines(lines []string) string {
 	out := ""
