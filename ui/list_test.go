@@ -20,9 +20,9 @@ func TestMain(m *testing.M) {
 func TestFormatSessionRow_NameBoldWhenNotSelected(t *testing.T) {
 	s := tmux.Session{Name: "mux"}
 	row := formatSessionRow(s, false, false, 60, "")
-	wantBold := lipgloss.NewStyle().Bold(true).Render("mux")
-	if !strings.Contains(row, wantBold) {
-		t.Errorf("expected bold session name %q in %q", wantBold, row)
+	want := lipgloss.NewStyle().Bold(true).Foreground(colorSessionName).Render("mux")
+	if !strings.Contains(row, want) {
+		t.Errorf("expected bold yellow session name %q in %q", want, row)
 	}
 }
 

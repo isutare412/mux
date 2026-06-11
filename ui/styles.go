@@ -16,6 +16,10 @@ var (
 	colorSelected = lipgloss.Color("#312E81")
 	colorCursor   = lipgloss.Color("#A78BFA")
 
+	// colorSessionName is the bright yellow used for session names so they stand
+	// out from window/pane rows. Kept distinct from the claude orange (#F59E0B).
+	colorSessionName = lipgloss.Color("#FACC15") // yellow-400
+
 	// Claude state colors
 	colorClaudeWorking = lipgloss.Color("#60A5FA") // blue
 	colorClaudeWaiting = lipgloss.Color("#F59E0B") // orange

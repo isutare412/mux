@@ -151,7 +151,7 @@ func formatSessionRow(s tmux.Session, expanded, selected bool, width int, label 
 	nameField := fmt.Sprintf("%-*s", maxSessionNameDisplay, name)
 	if !selected {
 		pad := strings.Repeat(" ", maxSessionNameDisplay-ansi.StringWidth(name))
-		nameField = lipgloss.NewStyle().Bold(true).Render(name) + pad
+		nameField = lipgloss.NewStyle().Bold(true).Foreground(colorSessionName).Render(name) + pad
 	}
 
 	text := fmt.Sprintf("%s %s %s %s", chevron, status, nameField, ago)
