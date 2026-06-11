@@ -34,12 +34,16 @@ func TestFormatPaneRow_LongCommandNotElided(t *testing.T) {
 
 func TestFormatSessionRow_JumpLabelReplacesChevron(t *testing.T) {
 	s := tmux.Session{Name: "mux"}
+	plain := formatSessionRow(s, true, false, 60, "")
 	row := formatSessionRow(s, true, false, 60, "q") // "q" is not in "mux"
 	if !strings.Contains(row, "q") {
 		t.Errorf("expected label \"q\" in %q", row)
 	}
 	if strings.Contains(row, "▼") {
 		t.Errorf("expected chevron replaced by label in %q", row)
+	}
+	if ansi.StringWidth(plain) != ansi.StringWidth(row) {
+		t.Errorf("row width changed with label: %d vs %d", ansi.StringWidth(plain), ansi.StringWidth(row))
 	}
 }
 

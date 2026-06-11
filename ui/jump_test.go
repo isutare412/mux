@@ -76,6 +76,9 @@ func TestJumpModeEnterAndJump(t *testing.T) {
 	if it == nil || it.session.Name != "eval" {
 		t.Fatalf("cursor not on eval; got %+v", it)
 	}
+	if (m.attachTarget != previewKey{}) {
+		t.Errorf("jump must not set attachTarget, got %+v", m.attachTarget)
+	}
 }
 
 func TestJumpModeEscCancels(t *testing.T) {
