@@ -240,12 +240,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case windowsLoadedMsg:
 		m.tree.windowsCache[msg.sessionName] = msg.windows
 		m.rebuildItems()
-		return m, nil
+		// Eagerly load each window's panes instead of waiting for the next tick,
+		// so Claude state/recap appear promptly on first view.
+		var cmds []tea.Cmd
+		for _, w := range msg.windows {
+			cmds = append(cmds, loadPanes(msg.sessionName, w.Index))
+		}
+		return m, tea.Batch(cmds...)
 
 	case panesLoadedMsg:
 		m.tree.panesCache[paneCacheKey{session: msg.sessionName, window: msg.windowIndex}] = msg.panes
 		m.rebuildItems()
-		return m, nil
+		// Eagerly load Claude info for AI panes so the glyph, timer, and recap
+		// render without waiting for a subsequent tick.
+		var cmds []tea.Cmd
+		for _, p := range msg.panes {
+			if p.PID > 0 && tmux.IsAICommand(p.Command) {
+				cmds = append(cmds, loadClaudeInfo(p.PID))
+			}
+		}
+		return m, tea.Batch(cmds...)
 
 	case currentContextMsg:
 		if msg.ok {
