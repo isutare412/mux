@@ -8,8 +8,9 @@ import (
 )
 
 func TestFormatWindowRow_LongNameNotElided(t *testing.T) {
+	st := newTreeState()
 	w := &tmux.Window{Index: 0, Name: "claude:eval-platform"}
-	row := formatWindowRow(w, false, false, 60)
+	row := formatWindowRow("sess", w, false, false, 60, &st)
 	if !strings.Contains(row, "claude:eval-platform") {
 		t.Errorf("expected full window name in %q", row)
 	}
@@ -19,8 +20,9 @@ func TestFormatWindowRow_LongNameNotElided(t *testing.T) {
 }
 
 func TestFormatPaneRow_LongCommandNotElided(t *testing.T) {
+	st := newTreeState()
 	p := &tmux.Pane{Index: 0, Command: "node /usr/local/bin/some-long-command"}
-	row := formatPaneRow(p, false, 60)
+	row := formatPaneRow(p, false, 60, &st)
 	if !strings.Contains(row, "node /usr/local/bin/some-long-command") {
 		t.Errorf("expected full pane command in %q", row)
 	}
