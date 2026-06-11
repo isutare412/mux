@@ -391,7 +391,7 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.createModel.nameInput.Focus()
 
 		case "x":
-			if it := m.currentItem(); it != nil && it.kind == itemSession {
+			if it := m.currentItem(); it != nil {
 				m.mode = modeConfirmKill
 				m.confirmKillMod = newConfirmKillModel(killTargetForItem(*it))
 			}
