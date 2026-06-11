@@ -263,7 +263,31 @@ func TestCleanRecapText(t *testing.T) {
 	}
 }
 
-func TestLoadRecapPrefersAiTitle(t *testing.T) {
+// custom-title (user-set via /rename) is the top priority and must win over
+// away_summary, last-assistant text, and ai-title.
+func TestLoadRecapPrefersCustomTitle(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	lines := []string{
+		`{"type":"custom-title","customTitle":"My renamed session"}`,
+		`{"type":"ai-title","aiTitle":"Rebase branch into main","sessionId":"s"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Some prose."}]}}`,
+		`{"type":"system","subtype":"away_summary","content":"Goal was colorizing the picker. Done."}`,
+	}
+	if err := os.WriteFile(path, []byte(joinLines(lines)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadRecap(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "My renamed session" {
+		t.Errorf("loadRecap = %q, want custom-title to win over all other sources", got)
+	}
+}
+
+// With no custom-title, away_summary must win over a frozen/off-topic ai-title.
+func TestLoadRecapAwayBeatsAiTitle(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "s.jsonl")
 	lines := []string{
@@ -278,17 +302,38 @@ func TestLoadRecapPrefersAiTitle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "Rebase branch into main" {
-		t.Errorf("loadRecap = %q, want ai-title to win over away_summary", got)
+	if got != "colorizing the tmux picker: bold names" {
+		t.Errorf("loadRecap = %q, want away_summary to win over ai-title", got)
 	}
 }
 
-func TestLoadRecapFallsBackToAiTitle(t *testing.T) {
+// ai-title is the last resort: last-assistant text outranks it.
+func TestLoadRecapAssistantBeatsAiTitle(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "s.jsonl")
 	lines := []string{
 		`{"type":"ai-title","aiTitle":"Fix pnpm build failure","sessionId":"s"}`,
-		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Working on it."}]}}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Wiring up the parser."}]}}`,
+	}
+	if err := os.WriteFile(path, []byte(joinLines(lines)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadRecap(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Wiring up the parser" {
+		t.Errorf("loadRecap = %q, want last-assistant text to win over ai-title", got)
+	}
+}
+
+// ai-title is still used when it is the only source available.
+func TestLoadRecapAiTitleLastResort(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	lines := []string{
+		`{"type":"user","message":{"role":"user","content":"hi"}}`,
+		`{"type":"ai-title","aiTitle":"Fix pnpm build failure","sessionId":"s"}`,
 	}
 	if err := os.WriteFile(path, []byte(joinLines(lines)), 0644); err != nil {
 		t.Fatal(err)
@@ -298,7 +343,7 @@ func TestLoadRecapFallsBackToAiTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != "Fix pnpm build failure" {
-		t.Errorf("loadRecap = %q, want ai-title", got)
+		t.Errorf("loadRecap = %q, want ai-title as last resort", got)
 	}
 }
 

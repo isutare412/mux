@@ -532,10 +532,12 @@ func lastAssistantText(lines [][]byte) string {
 
 // loadRecap returns a cleaned one-line recap for the transcript at path,
 // selecting the first available source in priority order:
-//  1. ai-title      (concise session title; re-stamped each turn, near the tail)
-//  2. away_summary  (Claude Code's "Recap" — richer; used when no ai-title)
-//  3. last assistant text (covers brand-new sessions before 1/2 exist)
-//  4. ""            (none available)
+//  1. custom-title  (user-set via /rename; the most intentional label)
+//  2. away_summary  (Claude Code's "Recap" — a deliberate session summary)
+//  3. last assistant text (recent activity prose)
+//  4. ai-title      (last resort; opportunistic and often off-topic, so ranked
+//                    below recent activity)
+//  5. ""            (none available)
 func loadRecap(path string) (string, error) {
 	data, err := tailBytes(path, recapTailBytes)
 	if err != nil {
@@ -543,8 +545,18 @@ func loadRecap(path string) (string, error) {
 	}
 	lines := bytes.Split(data, []byte("\n"))
 
-	away, ai := "", ""
+	custom, away, ai := "", "", ""
 	for _, line := range lines {
+		if bytes.Contains(line, []byte(`"custom-title"`)) {
+			var m struct {
+				Type        string `json:"type"`
+				CustomTitle string `json:"customTitle"`
+			}
+			if json.Unmarshal(line, &m) == nil && m.Type == "custom-title" {
+				custom = m.CustomTitle
+			}
+			continue
+		}
 		if bytes.Contains(line, []byte(`"away_summary"`)) {
 			var m struct {
 				Type    string `json:"type"`
@@ -567,14 +579,17 @@ func loadRecap(path string) (string, error) {
 		}
 	}
 
-	if ai != "" {
-		return cleanRecapText(ai), nil
+	if custom != "" {
+		return cleanRecapText(custom), nil
 	}
 	if away != "" {
 		return cleanRecapText(away), nil
 	}
 	if t := lastAssistantText(lines); t != "" {
 		return cleanRecapText(t), nil
+	}
+	if ai != "" {
+		return cleanRecapText(ai), nil
 	}
 	return "", nil
 }
