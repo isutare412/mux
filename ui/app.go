@@ -704,7 +704,7 @@ func (m Model) viewMain() string {
 	previewWidth := m.width - listWidth
 
 	// Render both panels (each returns exactly panelHeight lines)
-	list := renderListView(m.items, m.cursor, m.filterText, &m.tree, listWidth, panelHeight)
+	list := renderListView(m.items, m.cursor, m.filterText, &m.tree, listWidth, panelHeight, m.labels, m.mode == modeJump)
 
 	currentItem := m.currentItem()
 	currentSession := m.currentSession()

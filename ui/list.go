@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lunemis/mux/tmux"
@@ -16,7 +17,7 @@ const (
 
 // renderListView renders the flattened tree (sessions + expanded windows + panes).
 // Items must already be flattened by the caller via flatten().
-func renderListView(items []listItem, cursor int, filter string, t *treeState, width, height int) string {
+func renderListView(items []listItem, cursor int, filter string, t *treeState, width, height int, labels []string, jumpActive bool) string {
 	innerWidth := width - 2 // border chars
 	innerHeight := height - 2
 
@@ -47,7 +48,11 @@ func renderListView(items []listItem, cursor int, filter string, t *treeState, w
 	for i := 0; i < innerHeight; i++ {
 		idx := i + offset
 		if idx < len(items) {
-			lines[i] = formatItemRow(items[idx], idx == cursor, innerWidth, t)
+			label := ""
+			if jumpActive && idx < len(labels) {
+				label = labels[idx]
+			}
+			lines[i] = formatItemRow(items[idx], idx == cursor, innerWidth, t, label)
 		} else {
 			lines[i] = strings.Repeat(" ", innerWidth)
 		}
@@ -66,23 +71,37 @@ func renderSessionList(sessions []tmux.Session, cursor int, filter string, width
 		items[i] = listItem{kind: itemSession, session: &sessions[i]}
 	}
 	state := newTreeState()
-	return renderListView(items, cursor, filter, &state, width, height)
+	return renderListView(items, cursor, filter, &state, width, height, nil, false)
 }
 
-func formatItemRow(it listItem, selected bool, width int, t *treeState) string {
+// overlayLabel replaces the first rune of text with the jump label, styled in
+// the accent color. The label is one cell wide — the same width as the rune it
+// replaces (the chevron on session rows, or the leading indent space on window
+// rows) — so the row does not shift horizontally. An empty label returns text
+// unchanged.
+func overlayLabel(text, label string) string {
+	if label == "" {
+		return text
+	}
+	_, size := utf8.DecodeRuneInString(text)
+	styled := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(label)
+	return styled + text[size:]
+}
+
+func formatItemRow(it listItem, selected bool, width int, t *treeState, label string) string {
 	switch it.kind {
 	case itemWindow:
 		expanded := t.isWindowExpanded(it.session.Name, it.window.Index)
-		return formatWindowRow(it.session.Name, it.window, expanded, selected, width, t)
+		return formatWindowRow(it.session.Name, it.window, expanded, selected, width, t, label)
 	case itemPane:
 		return formatPaneRow(it.pane, selected, width, t)
 	default:
 		expanded := t.isSessionExpanded(it.session.Name)
-		return formatSessionRow(*it.session, expanded, selected, width)
+		return formatSessionRow(*it.session, expanded, selected, width, label)
 	}
 }
 
-func formatSessionRow(s tmux.Session, expanded, selected bool, width int) string {
+func formatSessionRow(s tmux.Session, expanded, selected bool, width int, label string) string {
 	chevron := "▶"
 	if expanded {
 		chevron = "▼"
@@ -113,6 +132,7 @@ func formatSessionRow(s tmux.Session, expanded, selected bool, width int) string
 
 	text := fmt.Sprintf("%s %s %-18s %s", chevron, status, name, ago)
 	text += styledIcon + branch
+	text = overlayLabel(text, label)
 	extraWidth := 0
 	if iconColor != "" {
 		extraWidth = 1
@@ -132,7 +152,7 @@ func formatSessionRow(s tmux.Session, expanded, selected bool, width int) string
 		Render(row)
 }
 
-func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool, width int, t *treeState) string {
+func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool, width int, t *treeState, label string) string {
 	chevron := "▶"
 	if expanded {
 		chevron = "▼"
@@ -149,6 +169,7 @@ func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool
 		text += claudeSuffix(info)
 	}
 
+	text = overlayLabel(text, label)
 	row := padOrTruncate(text, width)
 
 	if selected {
