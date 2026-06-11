@@ -275,6 +275,49 @@ func TestLoadRecapFallsBackToLastAssistant(t *testing.T) {
 	}
 }
 
+// away_summary must win even when an ai-title AND an assistant text message are
+// all present in the same transcript.
+func TestLoadRecapAwayWinsOverAllSources(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	lines := []string{
+		`{"type":"ai-title","aiTitle":"Rebase branch into main","sessionId":"s"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Some assistant prose."}]}}`,
+		`{"type":"system","subtype":"away_summary","content":"Goal was colorizing the picker. Done."}`,
+	}
+	if err := os.WriteFile(path, []byte(joinLines(lines)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadRecap(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "colorizing the picker" {
+		t.Errorf("loadRecap = %q, want away_summary to win over ai-title and assistant text", got)
+	}
+}
+
+// The cleanup pipeline must apply to the last-assistant fallback source too
+// (Goal prefix + backticks stripped, first sentence only).
+func TestLoadRecapCleansLastAssistant(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "s.jsonl")
+	lines := []string{
+		`{"type":"user","message":{"role":"user","content":"start"}}`,
+		"{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Goal was to wire up the `parser` module. Next step follows.\"}]}}",
+	}
+	if err := os.WriteFile(path, []byte(joinLines(lines)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadRecap(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "wire up the parser module" {
+		t.Errorf("loadRecap = %q, want cleaned last-assistant text", got)
+	}
+}
+
 // joinLines joins JSONL lines with trailing newlines.
 func joinLines(lines []string) string {
 	out := ""
