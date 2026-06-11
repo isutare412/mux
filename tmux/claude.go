@@ -269,6 +269,22 @@ func expandHome(path, home string) string {
 	}
 }
 
+const configDirEnvKey = "CLAUDE_CONFIG_DIR"
+
+// configDirFromTokens returns the value of CLAUDE_CONFIG_DIR among a list of
+// KEY=VALUE tokens (whitespace-split `ps` output or NUL-split /proc environ),
+// or "" when the key is absent or has an empty value. The last match wins.
+func configDirFromTokens(tokens []string) string {
+	prefix := configDirEnvKey + "="
+	val := ""
+	for _, t := range tokens {
+		if strings.HasPrefix(t, prefix) {
+			val = strings.TrimPrefix(t, prefix)
+		}
+	}
+	return val
+}
+
 // FormatTokens formats a token count into a short human-readable string.
 func FormatTokens(n int) string {
 	switch {

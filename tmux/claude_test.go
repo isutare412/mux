@@ -222,6 +222,42 @@ func TestExpandHome(t *testing.T) {
 	}
 }
 
+func TestConfigDirFromTokens(t *testing.T) {
+	tests := []struct {
+		name   string
+		tokens []string
+		want   string
+	}{
+		{
+			name:   "ps-style fields",
+			tokens: []string{"claude", "--foo", "CLAUDE_CONFIG_DIR=/Users/x/.claude-enterprise", "TERM=xterm"},
+			want:   "/Users/x/.claude-enterprise",
+		},
+		{
+			name:   "environ-style tokens",
+			tokens: []string{"PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/opt/claude-work", "HOME=/Users/x"},
+			want:   "/opt/claude-work",
+		},
+		{
+			name:   "absent",
+			tokens: []string{"PATH=/usr/bin", "HOME=/Users/x"},
+			want:   "",
+		},
+		{
+			name:   "empty value",
+			tokens: []string{"CLAUDE_CONFIG_DIR="},
+			want:   "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := configDirFromTokens(tt.tokens); got != tt.want {
+				t.Errorf("configDirFromTokens = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTranscriptAwaitingTool(t *testing.T) {
 	dir := t.TempDir()
 
