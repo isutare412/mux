@@ -147,3 +147,15 @@ func TestFormatWindowRow_ClaudeNamePlainWhenSelected(t *testing.T) {
 		t.Errorf("expected name present in selected row %q", row)
 	}
 }
+
+func TestFormatWindowRow_OrangePreservesWidth(t *testing.T) {
+	st := newTreeState()
+	st.panesCache[paneCacheKey{session: "sess", window: 0}] = []tmux.Pane{{Index: 0, PID: 2}}
+	st.claudeCache[2] = tmux.ClaudeInfo{State: tmux.ClaudeWaiting}
+	w := &tmux.Window{Index: 0, Name: "claude"}
+	plain := formatWindowRow("sess", w, false, true, 60, &st, "")   // selected: plain name
+	orange := formatWindowRow("sess", w, false, false, 60, &st, "") // non-selected: orange name
+	if ansi.StringWidth(plain) != ansi.StringWidth(orange) {
+		t.Errorf("orange changed row width: %d vs %d", ansi.StringWidth(plain), ansi.StringWidth(orange))
+	}
+}
