@@ -8,7 +8,7 @@ import (
 	"github.com/lunemis/mux/tmux"
 )
 
-func TestAssignLabels_SkipsPanesAndOrders(t *testing.T) {
+func TestAssignLabels_LabelsWindowsOnly(t *testing.T) {
 	items := []listItem{
 		{kind: itemSession},
 		{kind: itemWindow},
@@ -16,7 +16,7 @@ func TestAssignLabels_SkipsPanesAndOrders(t *testing.T) {
 		{kind: itemWindow},
 	}
 	got := assignLabels(items)
-	want := []string{"a", "s", "", "d"}
+	want := []string{"", "a", "", "s"}
 	if len(got) != len(want) {
 		t.Fatalf("len = %d, want %d", len(got), len(want))
 	}
@@ -31,7 +31,7 @@ func TestAssignLabels_Overflow(t *testing.T) {
 	n := len(jumpAlphabet) + 2
 	items := make([]listItem, n)
 	for i := range items {
-		items[i] = listItem{kind: itemSession}
+		items[i] = listItem{kind: itemWindow}
 	}
 	got := assignLabels(items)
 	if got[len(jumpAlphabet)-1] == "" {
@@ -44,14 +44,21 @@ func TestAssignLabels_Overflow(t *testing.T) {
 
 func TestRebuildItemsAssignsLabels(t *testing.T) {
 	m := NewModel()
-	sessions := []tmux.Session{{Name: "mux"}, {Name: "eval"}}
-	m = drive(m, sessionsLoadedMsg{sessions: sessions})
+	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}}})
+	m = drive(m, windowsLoadedMsg{sessionName: "mux", windows: []tmux.Window{
+		{Index: 0, Name: "nvim"},
+		{Index: 1, Name: "claude"},
+	}})
 
 	if len(m.labels) != len(m.items) {
 		t.Fatalf("labels len %d != items len %d", len(m.labels), len(m.items))
 	}
-	if m.labels[0] != "a" {
-		t.Errorf("labels[0] = %q, want \"a\"", m.labels[0])
+	// items: [session mux, window 0, window 1] -> labels: ["", "a", "s"]
+	if m.items[0].kind != itemSession || m.labels[0] != "" {
+		t.Errorf("session row should be unlabelled, got kind=%v label=%q", m.items[0].kind, m.labels[0])
+	}
+	if m.items[1].kind != itemWindow || m.labels[1] != "a" {
+		t.Errorf("first window label = %q, want \"a\"", m.labels[1])
 	}
 }
 
@@ -61,20 +68,25 @@ func runeKey(r rune) tea.KeyMsg {
 
 func TestJumpModeEnterAndJump(t *testing.T) {
 	m := NewModel()
-	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}, {Name: "eval"}}})
+	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}}})
+	m = drive(m, windowsLoadedMsg{sessionName: "mux", windows: []tmux.Window{
+		{Index: 0, Name: "nvim"},
+		{Index: 1, Name: "claude"},
+	}})
+	// items: [session mux, window 0, window 1] -> labels: ["", "a", "s"]
 
 	m = drive(m, runeKey('s')) // enter jump mode
 	if m.mode != modeJump {
 		t.Fatalf("mode = %v, want modeJump", m.mode)
 	}
 
-	m = drive(m, runeKey('s')) // 's' is the label for the 2nd row (eval)
+	m = drive(m, runeKey('s')) // 's' is the label for window 1
 	if m.mode != modeList {
 		t.Fatalf("mode = %v, want modeList after jump", m.mode)
 	}
 	it := m.currentItem()
-	if it == nil || it.session.Name != "eval" {
-		t.Fatalf("cursor not on eval; got %+v", it)
+	if it == nil || it.kind != itemWindow || it.window.Index != 1 {
+		t.Fatalf("cursor not on window 1; got %+v", it)
 	}
 	if (m.attachTarget != previewKey{}) {
 		t.Errorf("jump must not set attachTarget, got %+v", m.attachTarget)
@@ -102,7 +114,7 @@ func TestJumpModeNonLabelCancels(t *testing.T) {
 	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}, {Name: "eval"}}})
 
 	m = drive(m, runeKey('s'))
-	m = drive(m, runeKey('q')) // 'q' is not in jumpAlphabet
+	m = drive(m, runeKey('q')) // 'q' is in the alphabet but unassigned (no window rows), so cancels
 
 	if m.mode != modeList {
 		t.Fatalf("mode = %v, want modeList after non-label key", m.mode)

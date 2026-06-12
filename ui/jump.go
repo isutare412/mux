@@ -9,14 +9,14 @@ package ui
 const jumpAlphabet = "asdfwecvbtyuiopmzghjklnqrx"
 
 // assignLabels walks the flattened item list top-to-bottom and assigns the next
-// letter from jumpAlphabet to each session or window row. Pane rows, and any
-// rows beyond the alphabet, receive "" (no label; still reachable via j/k). The
+// letter from jumpAlphabet to each WINDOW row. Session rows, pane rows, and any
+// rows beyond the alphabet receive "" (no label; still reachable via j/k). The
 // result is a slice parallel to items.
 func assignLabels(items []listItem) []string {
 	labels := make([]string, len(items))
 	next := 0
 	for i, it := range items {
-		if it.kind == itemPane {
+		if it.kind != itemWindow {
 			continue
 		}
 		if next >= len(jumpAlphabet) {
