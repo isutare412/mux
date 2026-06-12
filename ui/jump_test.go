@@ -125,3 +125,22 @@ func TestRenderHelp_ListModeShowsJumpKey(t *testing.T) {
 		t.Errorf("list-mode help should advertise jump: %q", help)
 	}
 }
+
+func TestJumpAlphabetIsFullDistinctAZ(t *testing.T) {
+	if len(jumpAlphabet) != 26 {
+		t.Fatalf("jumpAlphabet len = %d, want 26", len(jumpAlphabet))
+	}
+	seen := map[rune]bool{}
+	for _, r := range jumpAlphabet {
+		if r < 'a' || r > 'z' {
+			t.Errorf("non a-z rune %q in jumpAlphabet", r)
+		}
+		if seen[r] {
+			t.Errorf("duplicate rune %q in jumpAlphabet", r)
+		}
+		seen[r] = true
+	}
+	if len(seen) != 26 {
+		t.Errorf("distinct letters = %d, want 26", len(seen))
+	}
+}
