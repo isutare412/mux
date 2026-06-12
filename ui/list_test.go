@@ -38,6 +38,14 @@ func TestFormatSessionRow_NameNotBoldWhenSelected(t *testing.T) {
 	}
 }
 
+func TestFormatSessionRow_OmitsGitBranch(t *testing.T) {
+	s := tmux.Session{Name: "mux", GitBranch: "feature/DP-3774-healthcheck"}
+	row := formatSessionRow(s, false, false, 80, "")
+	if strings.Contains(row, "feature/DP-3774-healthcheck") {
+		t.Errorf("expected git branch to be omitted from session row, got %q", row)
+	}
+}
+
 func TestFormatSessionRow_BoldPreservesWidth(t *testing.T) {
 	s := tmux.Session{Name: "mux"}
 	plain := formatSessionRow(s, false, true, 60, "") // selected: plain name

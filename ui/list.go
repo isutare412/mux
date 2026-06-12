@@ -139,11 +139,6 @@ func formatSessionRow(s tmux.Session, expanded, selected bool, width int, label 
 		styledIcon = " " + lipgloss.NewStyle().Foreground(lipgloss.Color(iconColor)).Render(icon)
 	}
 
-	branch := ""
-	if s.GitBranch != "" {
-		branch = " " + s.GitBranch
-	}
-
 	// Bold the session name on non-selected rows. The selected row gets its bold
 	// treatment from the whole-row style below, so leave the name plain there to
 	// avoid double-wrapping. Pad the name manually (instead of %-18s) because fmt
@@ -155,7 +150,7 @@ func formatSessionRow(s tmux.Session, expanded, selected bool, width int, label 
 	}
 
 	text := fmt.Sprintf("%s %s %s %s", chevron, status, nameField, ago)
-	text += styledIcon + branch
+	text += styledIcon
 	extraWidth := 0
 	if iconColor != "" {
 		extraWidth = 1
