@@ -50,7 +50,7 @@ func renderListView(items []listItem, cursor int, filter string, t *treeState, w
 		idx := i + offset
 		if idx < len(items) {
 			label := ""
-			if jumpActive && idx < len(labels) {
+			if idx < len(labels) {
 				label = labels[idx]
 			}
 			lines[i] = formatItemRow(items[idx], idx == cursor, innerWidth, t, label, jumpActive)

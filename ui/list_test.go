@@ -222,3 +222,28 @@ func TestFormatSessionRow_JumpLabelKeepsCursorHighlight(t *testing.T) {
 		t.Errorf("selected background not present after jump label; highlight bar breaks: %q", row)
 	}
 }
+
+func TestRenderListView_LabelsVisibleWithoutJumpMode(t *testing.T) {
+	sess := tmux.Session{Name: "mux"}
+	w := tmux.Window{Index: 0, Name: "nvim"}
+	items := []listItem{
+		{kind: itemSession, session: &sess},
+		{kind: itemWindow, session: &sess, window: &w},
+	}
+	labels := []string{"", "a"} // window row gets label "a"
+	st := newTreeState()
+
+	// Not in jump mode: the window label must still be present, drawn muted.
+	resting := renderListView(items, 0, "", &st, 60, 10, labels, false)
+	mutedOpen := styleOpen(lipgloss.NewStyle().Foreground(colorMuted))
+	if !strings.Contains(resting, mutedOpen) {
+		t.Errorf("resting label should be visible in muted color: %q", resting)
+	}
+
+	// In jump mode: the same label flips to the bold accent color.
+	active := renderListView(items, 0, "", &st, 60, 10, labels, true)
+	accentOpen := styleOpen(lipgloss.NewStyle().Bold(true).Foreground(colorAccent))
+	if !strings.Contains(active, accentOpen) {
+		t.Errorf("active label should be drawn in bold accent: %q", active)
+	}
+}
