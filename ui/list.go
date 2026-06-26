@@ -53,7 +53,7 @@ func renderListView(items []listItem, cursor int, filter string, t *treeState, w
 			if jumpActive && idx < len(labels) {
 				label = labels[idx]
 			}
-			lines[i] = formatItemRow(items[idx], idx == cursor, innerWidth, t, label)
+			lines[i] = formatItemRow(items[idx], idx == cursor, innerWidth, t, label, jumpActive)
 		} else {
 			lines[i] = strings.Repeat(" ", innerWidth)
 		}
@@ -89,24 +89,28 @@ func rowBaseStyle(selected bool, fg lipgloss.Color) lipgloss.Style {
 }
 
 // styleRow applies base to text. When label is non-empty, the first cell of text
-// is replaced by the jump label, rendered with the accent color on top of base
-// (so it keeps base's background — e.g. the cursor row's highlight). The label and
-// the remainder are each rendered self-contained, so the label's SGR reset never
-// leaks into the rest of the row.
-func styleRow(text string, base lipgloss.Style, label string) string {
+// is replaced by the jump label. The label is muted (colorMuted) at rest and bold
+// accent (colorAccent) when active (jump mode), rendered on top of base so it keeps
+// base's background — e.g. the cursor row's highlight. The label and the remainder
+// are each rendered self-contained, so the label's SGR reset never leaks into the
+// rest of the row.
+func styleRow(text string, base lipgloss.Style, label string, active bool) string {
 	if label == "" {
 		return base.Render(text)
 	}
 	_, size := utf8.DecodeRuneInString(text)
-	labelStyle := base.Bold(true).Foreground(colorAccent)
+	labelStyle := base.Foreground(colorMuted)
+	if active {
+		labelStyle = base.Bold(true).Foreground(colorAccent)
+	}
 	return labelStyle.Render(label) + base.Render(text[size:])
 }
 
-func formatItemRow(it listItem, selected bool, width int, t *treeState, label string) string {
+func formatItemRow(it listItem, selected bool, width int, t *treeState, label string, active bool) string {
 	switch it.kind {
 	case itemWindow:
 		expanded := t.isWindowExpanded(it.session.Name, it.window.Index)
-		return formatWindowRow(it.session.Name, it.window, expanded, selected, width, t, label)
+		return formatWindowRow(it.session.Name, it.window, expanded, selected, width, t, label, active)
 	case itemPane:
 		return formatPaneRow(it.pane, selected, width, t)
 	default:
@@ -158,10 +162,10 @@ func formatSessionRow(s tmux.Session, expanded, selected bool, width int, label 
 	row := padOrTruncate(text, width-extraWidth)
 
 	base := rowBaseStyle(selected, lipgloss.Color("#9CA3AF"))
-	return styleRow(row, base, label)
+	return styleRow(row, base, label, false)
 }
 
-func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool, width int, t *treeState, label string) string {
+func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool, width int, t *treeState, label string, active bool) string {
 	chevron := "▶"
 	if expanded {
 		chevron = "▼"
@@ -190,7 +194,7 @@ func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool
 	row := padOrTruncate(text, width)
 
 	base := rowBaseStyle(selected, lipgloss.Color("#9CA3AF"))
-	return styleRow(row, base, label)
+	return styleRow(row, base, label, active)
 }
 
 func formatPaneRow(p *tmux.Pane, selected bool, width int, t *treeState) string {
@@ -208,7 +212,7 @@ func formatPaneRow(p *tmux.Pane, selected bool, width int, t *treeState) string 
 	row := padOrTruncate(text, width)
 
 	base := rowBaseStyle(selected, lipgloss.Color("#6B7280"))
-	return styleRow(row, base, "")
+	return styleRow(row, base, "", false)
 }
 
 // claudeSuffix renders " <icon> <elapsed>  <recap>" for a Claude pane. The whole

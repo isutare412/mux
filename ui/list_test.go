@@ -58,7 +58,7 @@ func TestFormatSessionRow_BoldPreservesWidth(t *testing.T) {
 func TestFormatWindowRow_LongNameNotElided(t *testing.T) {
 	st := newTreeState()
 	w := &tmux.Window{Index: 0, Name: "claude:eval-platform"}
-	row := formatWindowRow("sess", w, false, false, 60, &st, "")
+	row := formatWindowRow("sess", w, false, false, 60, &st, "", false)
 	if !strings.Contains(row, "claude:eval-platform") {
 		t.Errorf("expected full window name in %q", row)
 	}
@@ -105,8 +105,8 @@ func TestFormatSessionRow_NoLabelKeepsChevron(t *testing.T) {
 func TestFormatWindowRow_JumpLabelKeepsChevronNoShift(t *testing.T) {
 	st := newTreeState()
 	w := &tmux.Window{Index: 0, Name: "nvim"} // no "q" in the name
-	plain := formatWindowRow("sess", w, false, false, 60, &st, "")
-	labeled := formatWindowRow("sess", w, false, false, 60, &st, "q")
+	plain := formatWindowRow("sess", w, false, false, 60, &st, "", false)
+	labeled := formatWindowRow("sess", w, false, false, 60, &st, "q", true)
 
 	if !strings.Contains(labeled, "q") {
 		t.Errorf("expected label \"q\" in %q", labeled)
@@ -124,7 +124,7 @@ func TestFormatWindowRow_ClaudeNameOrangeWhenNotSelected(t *testing.T) {
 	st.panesCache[paneCacheKey{session: "sess", window: 0}] = []tmux.Pane{{Index: 0, PID: 2}}
 	st.claudeCache[2] = tmux.ClaudeInfo{State: tmux.ClaudeWaiting}
 	w := &tmux.Window{Index: 0, Name: "claude"}
-	row := formatWindowRow("sess", w, false, false, 60, &st, "")
+	row := formatWindowRow("sess", w, false, false, 60, &st, "", false)
 	wantOrange := lipgloss.NewStyle().Foreground(colorClaude).Render("claude")
 	if !strings.Contains(row, wantOrange) {
 		t.Errorf("expected orange claude window name %q in %q", wantOrange, row)
@@ -134,7 +134,7 @@ func TestFormatWindowRow_ClaudeNameOrangeWhenNotSelected(t *testing.T) {
 func TestFormatWindowRow_NonClaudeNameNotOrange(t *testing.T) {
 	st := newTreeState()
 	w := &tmux.Window{Index: 0, Name: "nvim"}
-	row := formatWindowRow("sess", w, false, false, 60, &st, "")
+	row := formatWindowRow("sess", w, false, false, 60, &st, "", false)
 	wantOrange := lipgloss.NewStyle().Foreground(colorClaude).Render("nvim")
 	if strings.Contains(row, wantOrange) {
 		t.Errorf("did not expect orange styling on non-claude window %q", row)
@@ -146,7 +146,7 @@ func TestFormatWindowRow_ClaudeNamePlainWhenSelected(t *testing.T) {
 	st.panesCache[paneCacheKey{session: "sess", window: 0}] = []tmux.Pane{{Index: 0, PID: 2}}
 	st.claudeCache[2] = tmux.ClaudeInfo{State: tmux.ClaudeWaiting}
 	w := &tmux.Window{Index: 0, Name: "claude"}
-	row := formatWindowRow("sess", w, false, true, 60, &st, "")
+	row := formatWindowRow("sess", w, false, true, 60, &st, "", false)
 	wantOrange := lipgloss.NewStyle().Foreground(colorClaude).Render("claude")
 	if strings.Contains(row, wantOrange) {
 		t.Errorf("did not expect orange name on selected row %q", row)
@@ -161,8 +161,8 @@ func TestFormatWindowRow_OrangePreservesWidth(t *testing.T) {
 	st.panesCache[paneCacheKey{session: "sess", window: 0}] = []tmux.Pane{{Index: 0, PID: 2}}
 	st.claudeCache[2] = tmux.ClaudeInfo{State: tmux.ClaudeWaiting}
 	w := &tmux.Window{Index: 0, Name: "claude"}
-	plain := formatWindowRow("sess", w, false, true, 60, &st, "")   // selected: plain name
-	orange := formatWindowRow("sess", w, false, false, 60, &st, "") // non-selected: orange name
+	plain := formatWindowRow("sess", w, false, true, 60, &st, "", false)   // selected: plain name
+	orange := formatWindowRow("sess", w, false, false, 60, &st, "", false) // non-selected: orange name
 	if ansi.StringWidth(plain) != ansi.StringWidth(orange) {
 		t.Errorf("orange changed row width: %d vs %d", ansi.StringWidth(plain), ansi.StringWidth(orange))
 	}
@@ -173,6 +173,22 @@ func TestFormatWindowRow_OrangePreservesWidth(t *testing.T) {
 func styleOpen(s lipgloss.Style) string {
 	probe := s.Render("X")
 	return probe[:strings.Index(probe, "X")]
+}
+
+func TestStyleRow_LabelColorByActive(t *testing.T) {
+	base := lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF"))
+
+	inactive := styleRow("  text", base, "q", false)
+	wantMuted := styleOpen(base.Foreground(colorMuted))
+	if !strings.HasPrefix(inactive, wantMuted) {
+		t.Errorf("inactive label should open with muted color %q, got %q", wantMuted, inactive)
+	}
+
+	active := styleRow("  text", base, "q", true)
+	wantAccent := styleOpen(base.Bold(true).Foreground(colorAccent))
+	if !strings.HasPrefix(active, wantAccent) {
+		t.Errorf("active label should open with bold accent %q, got %q", wantAccent, active)
+	}
 }
 
 func TestFormatSessionRow_JumpLabelDoesNotLeakIntoName(t *testing.T) {
