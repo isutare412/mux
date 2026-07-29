@@ -61,6 +61,8 @@ type Model struct {
 	attachTarget     previewKey // set when we want to attach after quitting (zero value = no attach)
 	focusSession     string // session name to focus cursor on after next load
 	focusWindow      int    // window index to focus within focusSession; -1 = session row. Only meaningful when focusSession != "".
+	lastSession      string // reserved-jump target session ("" = none)
+	lastWindow       int    // active window index within lastSession
 	previewContent string           // cached capture-pane output
 	previewKey     previewKey       // (session, window, pane) the cache belongs to
 	tokenUsage     *tmux.TokenUsage // cached token usage for current AI session
@@ -115,6 +117,20 @@ type currentContextMsg struct {
 func loadCurrentContext() tea.Msg {
 	session, window, ok := tmux.CurrentContext()
 	return currentContextMsg{session: session, window: window, ok: ok}
+}
+
+type lastTargetMsg struct {
+	session string
+	window  int
+	ok      bool
+}
+
+// loadLastTarget resolves jump mode's reserved `s` destination. It runs once
+// from Init, never on the refresh tick — the pointer only changes when the user
+// switches sessions, which cannot happen while mux is on screen.
+func loadLastTarget() tea.Msg {
+	session, window, ok := tmux.LastTarget()
+	return lastTargetMsg{session: session, window: window, ok: ok}
 }
 
 func loadWindows(sessionName string) tea.Cmd {
@@ -173,7 +189,7 @@ func NewModel() Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(loadSessions, loadCurrentContext, tick())
+	return tea.Batch(loadSessions, loadCurrentContext, loadLastTarget, tick())
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -267,6 +283,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.ok {
 			m.focusSession = msg.session
 			m.focusWindow = msg.window
+			m.rebuildItems()
+		}
+		return m, nil
+
+	case lastTargetMsg:
+		if msg.ok {
+			m.lastSession = msg.session
+			m.lastWindow = msg.window
 			m.rebuildItems()
 		}
 		return m, nil

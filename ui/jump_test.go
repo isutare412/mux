@@ -156,3 +156,24 @@ func TestJumpAlphabetIsFullDistinctAZ(t *testing.T) {
 		t.Errorf("distinct letters = %d, want 26", len(seen))
 	}
 }
+
+func TestLastTargetMsgStoresTarget(t *testing.T) {
+	m := NewModel()
+	m = drive(m, lastTargetMsg{session: "dotfiles", window: 2, ok: true})
+
+	if m.lastSession != "dotfiles" {
+		t.Errorf("lastSession = %q, want \"dotfiles\"", m.lastSession)
+	}
+	if m.lastWindow != 2 {
+		t.Errorf("lastWindow = %d, want 2", m.lastWindow)
+	}
+}
+
+func TestLastTargetMsgIgnoredWhenNotOk(t *testing.T) {
+	m := NewModel()
+	m = drive(m, lastTargetMsg{session: "dotfiles", window: 2, ok: false})
+
+	if m.lastSession != "" {
+		t.Errorf("lastSession = %q, want empty when ok=false", m.lastSession)
+	}
+}
