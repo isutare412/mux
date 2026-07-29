@@ -125,7 +125,7 @@ func TestJumpModeNonLabelCancels(t *testing.T) {
 }
 
 func TestRenderHelp_JumpModeHint(t *testing.T) {
-	help := renderHelp(modeJump)
+	help := renderHelp(modeJump, true)
 	if !strings.Contains(help, "jump") {
 		t.Errorf("jump-mode help should mention jump: %q", help)
 	}
@@ -135,7 +135,7 @@ func TestRenderHelp_JumpModeHint(t *testing.T) {
 }
 
 func TestRenderHelp_ListModeShowsJumpKey(t *testing.T) {
-	help := renderHelp(modeList)
+	help := renderHelp(modeList, true)
 	if !strings.Contains(help, "jump") {
 		t.Errorf("list-mode help should advertise jump: %q", help)
 	}
@@ -344,8 +344,18 @@ func TestJumpToLastTargetFilteredAndCollapsedDoesNotExpand(t *testing.T) {
 }
 
 func TestRenderHelp_JumpModeAdvertisesReservedKey(t *testing.T) {
-	help := renderHelp(modeJump)
+	help := renderHelp(modeJump, true)
 	if !strings.Contains(help, "last") {
 		t.Errorf("jump-mode help should mention the reserved last-session key: %q", help)
+	}
+}
+
+func TestRenderHelp_JumpModeHidesReservedKeyWithoutTarget(t *testing.T) {
+	help := renderHelp(modeJump, false)
+	if strings.Contains(help, "last") {
+		t.Errorf("jump-mode help should not advertise s/last without a target: %q", help)
+	}
+	if !strings.Contains(help, "jump") || !strings.Contains(help, "cancel") {
+		t.Errorf("jump-mode help should still mention jump and cancel: %q", help)
 	}
 }

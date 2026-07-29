@@ -729,7 +729,7 @@ func (m Model) viewMain() string {
 	title := titleStyle.Render("⚡ tmux sessions " + count)
 
 	// Help bar
-	help := renderHelp(m.mode)
+	help := renderHelp(m.mode, m.lastSession != "")
 
 	// Filter / confirm bar
 	var extraBar string
@@ -802,13 +802,16 @@ func (m Model) viewWithOverlay(overlay string) string {
 		box)
 }
 
-func renderHelp(m mode) string {
+func renderHelp(m mode, hasTarget bool) string {
 	if m == modeJump {
-		return helpKeyStyle.Render("a…z") + " " + helpStyle.Render("jump") +
-			helpStyle.Render("  •  ") +
-			helpKeyStyle.Render("s") + " " + helpStyle.Render("last") +
-			helpStyle.Render("  •  ") +
-			helpKeyStyle.Render("esc") + " " + helpStyle.Render("cancel")
+		segments := []string{
+			helpKeyStyle.Render("a…z") + " " + helpStyle.Render("jump"),
+		}
+		if hasTarget {
+			segments = append(segments, helpKeyStyle.Render("s")+" "+helpStyle.Render("last"))
+		}
+		segments = append(segments, helpKeyStyle.Render("esc")+" "+helpStyle.Render("cancel"))
+		return strings.Join(segments, helpStyle.Render("  •  "))
 	}
 
 	keys := []struct{ key, desc string }{
