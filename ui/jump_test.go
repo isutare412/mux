@@ -383,3 +383,130 @@ func TestRenderHelp_JumpModeHidesReservedKeyWithoutTarget(t *testing.T) {
 		t.Errorf("jump-mode help should still mention jump and cancel: %q", help)
 	}
 }
+
+// anchorModel builds a Model whose launch window is mux:0 and whose last-session
+// target is dotfiles:1, with both sessions' windows loaded.
+func anchorModel(t *testing.T) Model {
+	t.Helper()
+	m := NewModel()
+	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}, {Name: "dotfiles"}}})
+	m = drive(m, windowsLoadedMsg{sessionName: "mux", windows: []tmux.Window{
+		{Index: 0, Name: "nvim", Active: true},
+		{Index: 1, Name: "zsh"},
+	}})
+	m = drive(m, windowsLoadedMsg{sessionName: "dotfiles", windows: []tmux.Window{
+		{Index: 1, Name: "nvim", Active: true},
+		{Index: 2, Name: "claude"},
+	}})
+	m = drive(m, currentContextMsg{session: "mux", window: 0, ok: true})
+	m = drive(m, lastTargetMsg{session: "dotfiles", window: 1, ok: true})
+	return m
+}
+
+// rowIndex returns the index of the given window row.
+func rowIndex(t *testing.T, m Model, session string, window int) int {
+	t.Helper()
+	for i, it := range m.items {
+		if it.kind == itemWindow && it.session.Name == session && it.window.Index == window {
+			return i
+		}
+	}
+	t.Fatalf("no window row for %s:%d", session, window)
+	return -1
+}
+
+func TestCurrentContextRetainsLaunchWindow(t *testing.T) {
+	m := anchorModel(t)
+	if m.homeSession != "mux" {
+		t.Errorf("homeSession = %q, want \"mux\"", m.homeSession)
+	}
+	if m.homeWindow != 0 {
+		t.Errorf("homeWindow = %d, want 0", m.homeWindow)
+	}
+}
+
+func TestJumpAnchors(t *testing.T) {
+	home := rowRef{session: "mux", window: 0}
+	last := rowRef{session: "dotfiles", window: 1}
+
+	tests := []struct {
+		name       string
+		setup      func(m *Model)
+		wantTarget rowRef
+		wantOther  rowRef
+	}{
+		{
+			name:       "cursor on home points at last",
+			setup:      func(m *Model) { m.cursor = rowIndex(t, *m, "mux", 0) },
+			wantTarget: last,
+			wantOther:  home,
+		},
+		{
+			name:       "cursor on last points home",
+			setup:      func(m *Model) { m.cursor = rowIndex(t, *m, "dotfiles", 1) },
+			wantTarget: home,
+			wantOther:  last,
+		},
+		{
+			name:       "cursor on neither points at last",
+			setup:      func(m *Model) { m.cursor = rowIndex(t, *m, "mux", 1) },
+			wantTarget: last,
+			wantOther:  home,
+		},
+		{
+			name: "no home is one-way",
+			setup: func(m *Model) {
+				m.homeSession = ""
+				m.cursor = rowIndex(t, *m, "dotfiles", 1)
+			},
+			wantTarget: last,
+			wantOther:  rowRef{},
+		},
+		{
+			name:       "no last means no anchors",
+			setup:      func(m *Model) { m.lastSession = "" },
+			wantTarget: rowRef{},
+			wantOther:  rowRef{},
+		},
+		{
+			name: "home equal to last is treated as no home",
+			setup: func(m *Model) {
+				m.homeSession = "dotfiles"
+				m.homeWindow = 1
+				m.cursor = rowIndex(t, *m, "dotfiles", 1)
+			},
+			wantTarget: last,
+			wantOther:  rowRef{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := anchorModel(t)
+			tc.setup(&m)
+			target, other := m.jumpAnchors()
+			if target != tc.wantTarget {
+				t.Errorf("target = %+v, want %+v", target, tc.wantTarget)
+			}
+			if other != tc.wantOther {
+				t.Errorf("other = %+v, want %+v", other, tc.wantOther)
+			}
+		})
+	}
+}
+
+// A pane row under the last window is a different row, so the key still points
+// outward rather than home.
+func TestJumpAnchors_PaneUnderLastIsNotLast(t *testing.T) {
+	m := anchorModel(t)
+	m.tree.setWindowExpanded("dotfiles", 1, true)
+	m = drive(m, panesLoadedMsg{sessionName: "dotfiles", windowIndex: 1, panes: []tmux.Pane{
+		{Index: 0, Command: "zsh", Active: true},
+	}})
+	m.cursor = rowIndex(t, m, "dotfiles", 1) + 1 // the pane row
+
+	target, _ := m.jumpAnchors()
+	if want := (rowRef{session: "dotfiles", window: 1}); target != want {
+		t.Errorf("target = %+v, want %+v (pane row must not count as the last row)", target, want)
+	}
+}

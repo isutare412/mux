@@ -39,3 +39,46 @@ func assignLabels(items []listItem, lastSession string, lastWindow int) []string
 	}
 	return labels
 }
+
+// rowRef names a window row by session name and window index. The zero value
+// means absent.
+type rowRef struct {
+	session string
+	window  int
+}
+
+// present reports whether this ref names a row at all.
+func (r rowRef) present() bool { return r.session != "" }
+
+// matches reports whether it is the window row r names. Only window rows match:
+// a pane row beneath that window is a different row.
+func (r rowRef) matches(it listItem) bool {
+	return r.present() && it.kind == itemWindow &&
+		it.session.Name == r.session && it.window.Index == r.window
+}
+
+// jumpAnchors returns the row the reserved key jumps to, and the other end of
+// the toggle. Standing on the last-session row points the key home; anywhere
+// else points it at the last session. Either may be absent.
+//
+// Both the label assignment and the key handler resolve through this one
+// function, so what the list advertises and where the key goes cannot drift
+// apart.
+func (m *Model) jumpAnchors() (target, other rowRef) {
+	last := rowRef{session: m.lastSession, window: m.lastWindow}
+	home := rowRef{session: m.homeSession, window: m.homeWindow}
+
+	if !last.present() {
+		return rowRef{}, rowRef{}
+	}
+	// No launch context (mux started outside tmux), or the two ends coincide:
+	// one-way, as before. LastTarget excludes the current session, so the
+	// equality case is defensive.
+	if !home.present() || home == last {
+		return last, rowRef{}
+	}
+	if it := m.currentItem(); it != nil && last.matches(*it) {
+		return home, last
+	}
+	return last, home
+}

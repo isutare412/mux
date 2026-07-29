@@ -63,6 +63,8 @@ type Model struct {
 	focusWindow      int    // window index to focus within focusSession; -1 = session row. Only meaningful when focusSession != "".
 	lastSession      string // reserved-jump target session ("" = none)
 	lastWindow       int    // active window index within lastSession
+	homeSession  string // window mux was launched from ("" = unknown)
+	homeWindow   int
 	previewContent string           // cached capture-pane output
 	previewKey     previewKey       // (session, window, pane) the cache belongs to
 	tokenUsage     *tmux.TokenUsage // cached token usage for current AI session
@@ -281,6 +283,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case currentContextMsg:
 		if msg.ok {
+			m.homeSession = msg.session
+			m.homeWindow = msg.window
 			m.focusSession = msg.session
 			m.focusWindow = msg.window
 			m.rebuildItems()
