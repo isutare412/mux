@@ -9,8 +9,9 @@ import (
 
 // mockRunner records calls and returns pre-configured responses.
 type mockRunner struct {
-	outputs map[string]mockResult
-	runs    []string
+	outputs  map[string]mockResult
+	runs     []string
+	outCalls []string
 }
 
 type mockResult struct {
@@ -32,6 +33,7 @@ func (m *mockRunner) OnOutput(out []byte, err error, name string, args ...string
 
 func (m *mockRunner) Output(name string, args ...string) ([]byte, error) {
 	k := m.key(name, args...)
+	m.outCalls = append(m.outCalls, k)
 	if r, ok := m.outputs[k]; ok {
 		return r.out, r.err
 	}
