@@ -378,42 +378,34 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focusSession = ""
 			m.focusWindow = -1
 			if m.cursor > 0 {
-				m.cursor--
-				return m, m.refreshCurrentPreview()
+				return m, m.moveCursor(m.cursor - 1)
 			}
 		case "down", "j":
 			m.focusSession = ""
 			m.focusWindow = -1
 			if m.cursor < len(m.items)-1 {
-				m.cursor++
-				return m, m.refreshCurrentPreview()
+				return m, m.moveCursor(m.cursor + 1)
 			}
 		case "g":
-			m.focusSession = ""
-			m.focusWindow = -1
-			m.cursor = 0
-			return m, m.refreshCurrentPreview()
+			return m, m.moveCursor(0)
 		case "G":
 			m.focusSession = ""
 			m.focusWindow = -1
 			if len(m.items) > 0 {
-				m.cursor = len(m.items) - 1
-				return m, m.refreshCurrentPreview()
+				return m, m.moveCursor(len(m.items) - 1)
 			}
 
 		case "J":
 			m.focusSession = ""
 			m.focusWindow = -1
 			if idx, ok := nextSessionStop(m.items, m.cursor, 1); ok {
-				m.cursor = idx
-				return m, m.refreshCurrentPreview()
+				return m, m.moveCursor(idx)
 			}
 		case "K":
 			m.focusSession = ""
 			m.focusWindow = -1
 			if idx, ok := nextSessionStop(m.items, m.cursor, -1); ok {
-				m.cursor = idx
-				return m, m.refreshCurrentPreview()
+				return m, m.moveCursor(idx)
 			}
 
 		case "tab", "right", "l":
@@ -516,10 +508,7 @@ func (m Model) updateJump(msg tea.Msg) (tea.Model, tea.Cmd) {
 	for i, label := range m.labels {
 		if label != "" && label == key.String() {
 			m.mode = modeList
-			m.focusSession = ""
-			m.focusWindow = -1
-			m.cursor = i
-			return m, m.refreshCurrentPreview()
+			return m, m.moveCursor(i)
 		}
 	}
 	// Any other key cancels jump mode.
@@ -593,6 +582,18 @@ func (m *Model) refreshCurrentPreview() tea.Cmd {
 		return refreshPreview(previewKeyForItem(*it))
 	}
 	return nil
+}
+
+// moveCursor points the cursor at idx and brings everything derived from it up
+// to date: the pending focus is abandoned (an explicit move overrides it) and
+// the jump labels are recomputed, since which anchor carries `s` depends on
+// where the cursor now sits. Returns the preview command for the new row.
+func (m *Model) moveCursor(idx int) tea.Cmd {
+	m.focusSession = ""
+	m.focusWindow = -1
+	m.cursor = idx
+	m.refreshLabels()
+	return m.refreshCurrentPreview()
 }
 
 // findItemIndex returns the index of the matching listItem, or -1 if not found.
@@ -693,6 +694,15 @@ func (m *Model) rebuildItems() {
 	// Labels depend on the cursor — jumpAnchors swaps the toggle's ends based on
 	// where it sits — so they must be assigned after applyPendingFocus has had
 	// its chance to move it.
+	m.refreshLabels()
+}
+
+// refreshLabels recomputes m.labels from the current items and cursor. Every
+// path that moves the cursor must call this afterward: jumpAnchors decides
+// which anchor carries the reserved key based on where the cursor sits, so a
+// stale call here is the one way the row a label names and the row `s` would
+// actually jump to can drift apart.
+func (m *Model) refreshLabels() {
 	target, other := m.jumpAnchors()
 	m.labels = assignLabels(m.items, target, other)
 }

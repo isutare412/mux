@@ -693,6 +693,38 @@ func TestReservedHintFollowsTheAnchors(t *testing.T) {
 	}
 }
 
+// Regression: every cursor-movement key must refresh m.labels immediately, not
+// just on the next rebuild. ss's reserved-key branch already calls
+// rebuildItems, so it legitimately lands the cursor on the last row with
+// correct labels (home shows the reserved key, last shows the dot). An
+// ordinary movement key off that row must bring the labels along with it —
+// jumpAnchors swaps which end is the target the moment the cursor leaves last,
+// and the label the list shows must agree with where `s` would actually go.
+func TestMovementRefreshesLabels(t *testing.T) {
+	m := anchorModel(t)
+	m = drive(m, runeKey('s'))
+	m = drive(m, runeKey('s'))
+	if want := rowIndex(t, m, "dotfiles", 1); m.cursor != want {
+		t.Fatalf("setup: cursor = %d, want %d (last row)", m.cursor, want)
+	}
+
+	m = drive(m, tea.KeyMsg{Type: tea.KeyUp})
+
+	target, other := m.jumpAnchors()
+	if target.present() {
+		idx := rowIndex(t, m, target.session, target.window)
+		if got := m.labels[idx]; got != string(jumpReserved) {
+			t.Errorf("target row label = %q, want %q (m.labels did not follow the cursor)", got, string(jumpReserved))
+		}
+	}
+	if other.present() {
+		idx := rowIndex(t, m, other.session, other.window)
+		if got := m.labels[idx]; got != string(jumpInactive) {
+			t.Errorf("other row label = %q, want %q (m.labels did not follow the cursor)", got, string(jumpInactive))
+		}
+	}
+}
+
 // The dot is not a key you can press, so jump mode must not brighten it.
 // The profile must be forced: lipgloss strips color when stdout is not a TTY,
 // which would make both comparisons below trivially equal and the test vacuous.
