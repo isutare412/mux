@@ -221,3 +221,100 @@ func TestLastTargetMsgIgnoredWhenNotOk(t *testing.T) {
 		t.Errorf("lastSession = %q, want empty when ok=false", m.lastSession)
 	}
 }
+
+func TestJumpToLastTargetWhenVisible(t *testing.T) {
+	m := NewModel()
+	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}, {Name: "dotfiles"}}})
+	m = drive(m, windowsLoadedMsg{sessionName: "dotfiles", windows: []tmux.Window{
+		{Index: 1, Name: "nvim"},
+		{Index: 2, Name: "claude"},
+	}})
+	m = drive(m, lastTargetMsg{session: "dotfiles", window: 2, ok: true})
+
+	m = drive(m, runeKey('s')) // enter jump mode
+	m = drive(m, runeKey('s')) // reserved: jump to the last target
+
+	if m.mode != modeList {
+		t.Fatalf("mode = %v, want modeList after jump", m.mode)
+	}
+	it := m.currentItem()
+	if it == nil || it.kind != itemWindow || it.session.Name != "dotfiles" || it.window.Index != 2 {
+		t.Fatalf("cursor not on dotfiles window 2; got %+v", it)
+	}
+	if (m.attachTarget != previewKey{}) {
+		t.Errorf("jump must not set attachTarget, got %+v", m.attachTarget)
+	}
+}
+
+func TestJumpToLastTargetExpandsCollapsedSession(t *testing.T) {
+	m := NewModel()
+	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}, {Name: "dotfiles"}}})
+	m = drive(m, lastTargetMsg{session: "dotfiles", window: 2, ok: true})
+	m.tree.setSessionExpanded("dotfiles", false) // user collapsed it
+
+	m = drive(m, runeKey('s'))
+	m = drive(m, runeKey('s'))
+
+	if !m.tree.isSessionExpanded("dotfiles") {
+		t.Error("jump should expand the collapsed target session")
+	}
+	// dotfiles' windows were never loaded, so the focus must stay pending.
+	if m.focusSession != "dotfiles" || m.focusWindow != 2 {
+		t.Fatalf("pending focus = (%q, %d), want (\"dotfiles\", 2)", m.focusSession, m.focusWindow)
+	}
+
+	m = drive(m, windowsLoadedMsg{sessionName: "dotfiles", windows: []tmux.Window{
+		{Index: 1, Name: "nvim"},
+		{Index: 2, Name: "claude"},
+	}})
+
+	it := m.currentItem()
+	if it == nil || it.kind != itemWindow || it.session.Name != "dotfiles" || it.window.Index != 2 {
+		t.Fatalf("cursor did not snap to dotfiles window 2 after load; got %+v", it)
+	}
+}
+
+func TestJumpToLastTargetNoOpWithoutTarget(t *testing.T) {
+	m := NewModel()
+	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}, {Name: "eval"}}})
+	start := m.cursor
+
+	m = drive(m, runeKey('s'))
+	m = drive(m, runeKey('s'))
+
+	if m.mode != modeList {
+		t.Fatalf("mode = %v, want modeList", m.mode)
+	}
+	if m.cursor != start {
+		t.Errorf("cursor moved without a target: %d -> %d", start, m.cursor)
+	}
+}
+
+// A filtered-out target leaves the focus pending. Navigation clears it, so it
+// cannot fire unexpectedly once the filter is lifted.
+func TestJumpToLastTargetHiddenByFilter(t *testing.T) {
+	m := NewModel()
+	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}, {Name: "dotfiles"}}})
+	m = drive(m, lastTargetMsg{session: "dotfiles", window: 2, ok: true})
+	m = drive(m, filterAppliedMsg{text: "mux"}) // dotfiles is filtered out
+	start := m.cursor
+
+	m = drive(m, runeKey('s'))
+	m = drive(m, runeKey('s'))
+
+	if m.cursor != start {
+		t.Errorf("cursor moved to a filtered-out target: %d -> %d", start, m.cursor)
+	}
+
+	m = drive(m, tea.KeyMsg{Type: tea.KeyDown})
+	if m.focusSession != "" {
+		t.Errorf("focusSession = %q, want empty after navigation clears pending focus", m.focusSession)
+	}
+}
+
+func TestRenderHelp_JumpModeAdvertisesReservedKey(t *testing.T) {
+	help := renderHelp(modeJump)
+	if !strings.Contains(help, "last") {
+		t.Errorf("jump-mode help should mention the reserved last-session key: %q", help)
+	}
+}

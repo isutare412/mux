@@ -454,8 +454,9 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // updateJump handles keys while jump mode is active. A label key moves the
-// cursor to that row and exits to list mode (it does NOT attach); esc or any
-// other key cancels jump mode.
+// cursor to that row and exits to list mode (it does NOT attach); the reserved
+// key jumps to the last session's active window, expanding it if needed; esc or
+// any other key cancels jump mode.
 func (m Model) updateJump(msg tea.Msg) (tea.Model, tea.Cmd) {
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
@@ -464,6 +465,25 @@ func (m Model) updateJump(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if key.String() == "esc" {
 		m.mode = modeList
 		return m, nil
+	}
+	if key.String() == string(jumpReserved) {
+		m.mode = modeList
+		if m.lastSession == "" {
+			return m, nil
+		}
+		var cmds []tea.Cmd
+		if !m.tree.isSessionExpanded(m.lastSession) {
+			m.tree.setSessionExpanded(m.lastSession, true)
+			cmds = append(cmds, loadWindows(m.lastSession))
+		}
+		// Reuse the pending-focus machinery: rebuildItems snaps the cursor when
+		// the row is already present, otherwise the target stays pending until
+		// windowsLoadedMsg triggers the next rebuild.
+		m.focusSession = m.lastSession
+		m.focusWindow = m.lastWindow
+		m.rebuildItems()
+		cmds = append(cmds, m.refreshCurrentPreview())
+		return m, tea.Batch(cmds...)
 	}
 	for i, label := range m.labels {
 		if label != "" && label == key.String() {
@@ -778,6 +798,8 @@ func (m Model) viewWithOverlay(overlay string) string {
 func renderHelp(m mode) string {
 	if m == modeJump {
 		return helpKeyStyle.Render("a…z") + " " + helpStyle.Render("jump") +
+			helpStyle.Render("  •  ") +
+			helpKeyStyle.Render("s") + " " + helpStyle.Render("last") +
 			helpStyle.Render("  •  ") +
 			helpKeyStyle.Render("esc") + " " + helpStyle.Render("cancel")
 	}
