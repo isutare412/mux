@@ -185,6 +185,30 @@ func TestAssignLabels_ReservesSForLastTarget(t *testing.T) {
 	}
 }
 
+// The reserved row does not consume a pool letter regardless of where it sits
+// in the list. TestAssignLabels_ReservesSForLastTarget places the target last;
+// this places it first, so the pool assignment for the rows after it must be
+// identical to what they'd get with no target at all.
+func TestAssignLabels_ReservedRowOrderIndependent(t *testing.T) {
+	sessions := []tmux.Session{{Name: "dotfiles"}, {Name: "mux"}}
+	windows := []tmux.Window{{Index: 0}, {Index: 1}}
+	items := []listItem{
+		{kind: itemSession, session: &sessions[0]},
+		{kind: itemWindow, session: &sessions[0], window: &windows[0]}, // target
+		{kind: itemWindow, session: &sessions[0], window: &windows[1]},
+		{kind: itemSession, session: &sessions[1]},
+		{kind: itemWindow, session: &sessions[1], window: &windows[0]},
+	}
+
+	got := assignLabels(items, "dotfiles", 0)
+	want := []string{"", "s", "a", "", "d"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("labels[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestAssignLabels_NoRowGetsSWithoutATarget(t *testing.T) {
 	sessions := []tmux.Session{{Name: "mux"}}
 	windows := []tmux.Window{{Index: 0}, {Index: 1}}
