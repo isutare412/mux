@@ -91,6 +91,26 @@ func TestLastTarget_DeadPointerFallsBack(t *testing.T) {
 	})
 }
 
+// When the client query fails, clientLastSession returns ("", ""). The empty
+// current session must not be treated as "no session to exclude" -- that would
+// let the recency fallback select the current session itself as the jump
+// target. Bail immediately; list-sessions must never run.
+func TestLastTarget_ClientQueryErrorBailsWithoutFallback(t *testing.T) {
+	withMock(t, func(m *mockRunner) {
+		t.Setenv("TMUX", fakeTmux)
+		t.Setenv("TMUX_PANE", "%2")
+		m.OnOutput(nil, fmt.Errorf("no client"), "tmux", "display-message", "-t", "%2", "-p", lastTargetFormat)
+
+		if _, _, ok := LastTarget(); ok {
+			t.Error("expected ok=false when the client query errors")
+		}
+		want := []string{"tmux display-message -t %2 -p " + lastTargetFormat}
+		if len(m.outCalls) != len(want) || m.outCalls[0] != want[0] {
+			t.Errorf("outCalls = %v, want %v (list-sessions must not run)", m.outCalls, want)
+		}
+	})
+}
+
 func TestLastTarget_NotInTmuxRunsNoCommands(t *testing.T) {
 	withMock(t, func(m *mockRunner) {
 		t.Setenv("TMUX", "")

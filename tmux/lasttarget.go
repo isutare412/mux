@@ -32,6 +32,11 @@ func LastTarget() (session string, window int, ok bool) {
 	}
 
 	current, last := clientLastSession()
+	if current == "" {
+		// The current session is unknown, so nothing can be safely excluded
+		// from the recency fallback — bail rather than risk selecting it.
+		return "", 0, false
+	}
 	if last != "" && last != current {
 		if idx, found := activeWindowIndex(last); found {
 			return last, idx, true
