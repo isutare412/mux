@@ -638,7 +638,7 @@ func (m *Model) currentSessionName() string {
 // state changes.
 func (m *Model) rebuildItems() {
 	m.items = flatten(m.filtered, &m.tree)
-	m.labels = assignLabels(m.items)
+	m.labels = assignLabels(m.items, m.lastSession, m.lastWindow)
 	if m.cursor >= len(m.items) {
 		m.cursor = max(0, len(m.items)-1)
 	}

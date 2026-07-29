@@ -15,8 +15,8 @@ func TestAssignLabels_LabelsWindowsOnly(t *testing.T) {
 		{kind: itemPane},
 		{kind: itemWindow},
 	}
-	got := assignLabels(items)
-	want := []string{"", "a", "", "s"}
+	got := assignLabels(items, "", 0)
+	want := []string{"", "a", "", "d"}
 	if len(got) != len(want) {
 		t.Fatalf("len = %d, want %d", len(got), len(want))
 	}
@@ -33,7 +33,7 @@ func TestAssignLabels_Overflow(t *testing.T) {
 	for i := range items {
 		items[i] = listItem{kind: itemWindow}
 	}
-	got := assignLabels(items)
+	got := assignLabels(items, "", 0)
 	if got[len(jumpAlphabet)-1] == "" {
 		t.Errorf("last in-range row should have a label")
 	}
@@ -53,12 +53,15 @@ func TestRebuildItemsAssignsLabels(t *testing.T) {
 	if len(m.labels) != len(m.items) {
 		t.Fatalf("labels len %d != items len %d", len(m.labels), len(m.items))
 	}
-	// items: [session mux, window 0, window 1] -> labels: ["", "a", "s"]
+	// items: [session mux, window 0, window 1] -> labels: ["", "a", "d"]
 	if m.items[0].kind != itemSession || m.labels[0] != "" {
 		t.Errorf("session row should be unlabelled, got kind=%v label=%q", m.items[0].kind, m.labels[0])
 	}
 	if m.items[1].kind != itemWindow || m.labels[1] != "a" {
 		t.Errorf("first window label = %q, want \"a\"", m.labels[1])
+	}
+	if m.items[2].kind != itemWindow || m.labels[2] != "d" {
+		t.Errorf("second window label = %q, want \"d\"", m.labels[2])
 	}
 }
 
@@ -73,14 +76,14 @@ func TestJumpModeEnterAndJump(t *testing.T) {
 		{Index: 0, Name: "nvim"},
 		{Index: 1, Name: "claude"},
 	}})
-	// items: [session mux, window 0, window 1] -> labels: ["", "a", "s"]
+	// items: [session mux, window 0, window 1] -> labels: ["", "a", "d"]
 
 	m = drive(m, runeKey('s')) // enter jump mode
 	if m.mode != modeJump {
 		t.Fatalf("mode = %v, want modeJump", m.mode)
 	}
 
-	m = drive(m, runeKey('s')) // 's' is the label for window 1
+	m = drive(m, runeKey('d')) // 'd' is the label for window 1
 	if m.mode != modeList {
 		t.Fatalf("mode = %v, want modeList after jump", m.mode)
 	}
@@ -138,9 +141,9 @@ func TestRenderHelp_ListModeShowsJumpKey(t *testing.T) {
 	}
 }
 
-func TestJumpAlphabetIsFullDistinctAZ(t *testing.T) {
-	if len(jumpAlphabet) != 26 {
-		t.Fatalf("jumpAlphabet len = %d, want 26", len(jumpAlphabet))
+func TestJumpAlphabetExcludesReservedKey(t *testing.T) {
+	if len(jumpAlphabet) != 25 {
+		t.Fatalf("jumpAlphabet len = %d, want 25 (a-z minus the reserved key)", len(jumpAlphabet))
 	}
 	seen := map[rune]bool{}
 	for _, r := range jumpAlphabet {
@@ -152,8 +155,49 @@ func TestJumpAlphabetIsFullDistinctAZ(t *testing.T) {
 		}
 		seen[r] = true
 	}
-	if len(seen) != 26 {
-		t.Errorf("distinct letters = %d, want 26", len(seen))
+	if seen[jumpReserved] {
+		t.Errorf("jumpAlphabet must not contain the reserved key %q", jumpReserved)
+	}
+	if len(seen) != 25 {
+		t.Errorf("distinct letters = %d, want 25", len(seen))
+	}
+}
+
+func TestAssignLabels_ReservesSForLastTarget(t *testing.T) {
+	sessions := []tmux.Session{{Name: "mux"}, {Name: "dotfiles"}}
+	windows := []tmux.Window{{Index: 0}, {Index: 1}}
+	items := []listItem{
+		{kind: itemSession, session: &sessions[0]},
+		{kind: itemWindow, session: &sessions[0], window: &windows[0]},
+		{kind: itemWindow, session: &sessions[0], window: &windows[1]},
+		{kind: itemSession, session: &sessions[1]},
+		{kind: itemWindow, session: &sessions[1], window: &windows[0]},
+	}
+
+	got := assignLabels(items, "dotfiles", 0)
+	// The target takes "s" without consuming a pool letter, so the other
+	// window rows keep the labels they would have had anyway.
+	want := []string{"", "a", "d", "", "s"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("labels[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestAssignLabels_NoRowGetsSWithoutATarget(t *testing.T) {
+	sessions := []tmux.Session{{Name: "mux"}}
+	windows := []tmux.Window{{Index: 0}, {Index: 1}}
+	items := []listItem{
+		{kind: itemSession, session: &sessions[0]},
+		{kind: itemWindow, session: &sessions[0], window: &windows[0]},
+		{kind: itemWindow, session: &sessions[0], window: &windows[1]},
+	}
+
+	for i, label := range assignLabels(items, "", 0) {
+		if label == string(jumpReserved) {
+			t.Errorf("labels[%d] = %q, want no reserved label without a target", i, label)
+		}
 	}
 }
 
