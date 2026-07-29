@@ -29,3 +29,25 @@ func sessionStops(items []listItem) []int {
 	}
 	return stops
 }
+
+// nextSessionStop returns the first session stop after from when dir is +1, or
+// the last one before from when dir is -1. ok is false at the ends: the cursor
+// stays put rather than wrapping, matching j/k. from need not be a stop itself
+// — the comparison is positional.
+func nextSessionStop(items []listItem, from, dir int) (int, bool) {
+	stops := sessionStops(items)
+	if dir > 0 {
+		for _, s := range stops {
+			if s > from {
+				return s, true
+			}
+		}
+		return 0, false
+	}
+	for i := len(stops) - 1; i >= 0; i-- {
+		if stops[i] < from {
+			return stops[i], true
+		}
+	}
+	return 0, false
+}

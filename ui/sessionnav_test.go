@@ -6,8 +6,8 @@ import (
 	"github.com/lunemis/mux/tmux"
 )
 
-// navFixture builds a flattened list shaped like the real tree so the stop
-// tests read as trees rather than index arithmetic.
+// navSession describes a test session with its windows and panes, used to
+// construct a flattened list for testing.
 type navSession struct {
 	name     string
 	windows  []tmux.Window
@@ -105,4 +105,117 @@ func TestSessionStops_PaneRowsAreNeverStops(t *testing.T) {
 
 func TestSessionStops_Empty(t *testing.T) {
 	assertStops(t, nil, nil)
+}
+
+// navModel builds a Model with two sessions whose windows are loaded, so the
+// item list is [mux, mux:0*, mux:1, dotfiles, dotfiles:1, dotfiles:2*].
+func navModel(t *testing.T) Model {
+	t.Helper()
+	m := NewModel()
+	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}, {Name: "dotfiles"}}})
+	m = drive(m, windowsLoadedMsg{sessionName: "mux", windows: []tmux.Window{
+		{Index: 0, Name: "nvim", Active: true},
+		{Index: 1, Name: "zsh"},
+	}})
+	m = drive(m, windowsLoadedMsg{sessionName: "dotfiles", windows: []tmux.Window{
+		{Index: 1, Name: "nvim"},
+		{Index: 2, Name: "claude", Active: true},
+	}})
+	return m
+}
+
+// stopIndex returns the index of the given session's stop, so assertions read
+// by session name instead of by a hard-coded row number.
+func stopIndex(t *testing.T, m Model, session string) int {
+	t.Helper()
+	for _, s := range sessionStops(m.items) {
+		if m.items[s].session.Name == session {
+			return s
+		}
+	}
+	t.Fatalf("no stop for session %q", session)
+	return -1
+}
+
+func TestNextSessionStop_ForwardAndBackward(t *testing.T) {
+	m := navModel(t)
+	first := sessionStops(m.items)[0]
+	second := sessionStops(m.items)[1]
+
+	if got, ok := nextSessionStop(m.items, first, 1); !ok || got != second {
+		t.Errorf("forward from %d = (%d, %v), want (%d, true)", first, got, ok, second)
+	}
+	if got, ok := nextSessionStop(m.items, second, -1); !ok || got != first {
+		t.Errorf("backward from %d = (%d, %v), want (%d, true)", second, got, ok, first)
+	}
+}
+
+func TestJumpKeysMoveBetweenSessions(t *testing.T) {
+	m := navModel(t)
+	m.cursor = 0 // the mux session row
+
+	m = drive(m, runeKey('J'))
+	if want := stopIndex(t, m, "mux"); m.cursor != want {
+		t.Fatalf("J from the top: cursor = %d, want %d (mux stop)", m.cursor, want)
+	}
+
+	m = drive(m, runeKey('J'))
+	if want := stopIndex(t, m, "dotfiles"); m.cursor != want {
+		t.Fatalf("second J: cursor = %d, want %d (dotfiles stop)", m.cursor, want)
+	}
+
+	m = drive(m, runeKey('K'))
+	if want := stopIndex(t, m, "mux"); m.cursor != want {
+		t.Fatalf("K: cursor = %d, want %d (mux stop)", m.cursor, want)
+	}
+}
+
+// From a row that is not itself a stop, J/K move to the adjacent stop.
+func TestJumpKeysFromNonStopRow(t *testing.T) {
+	m := navModel(t)
+	m.cursor = stopIndex(t, m, "mux") + 1 // mux:1, not the starred row
+
+	m = drive(m, runeKey('J'))
+	if want := stopIndex(t, m, "dotfiles"); m.cursor != want {
+		t.Errorf("J: cursor = %d, want %d", m.cursor, want)
+	}
+
+	m.cursor = stopIndex(t, m, "mux") + 1
+	m = drive(m, runeKey('K'))
+	if want := stopIndex(t, m, "mux"); m.cursor != want {
+		t.Errorf("K: cursor = %d, want %d", m.cursor, want)
+	}
+}
+
+func TestJumpKeysClampAtTheEnds(t *testing.T) {
+	m := navModel(t)
+
+	m.cursor = stopIndex(t, m, "dotfiles")
+	last := m.cursor
+	m = drive(m, runeKey('J'))
+	if m.cursor != last {
+		t.Errorf("J at the final stop moved: %d -> %d", last, m.cursor)
+	}
+
+	m.cursor = stopIndex(t, m, "mux")
+	first := m.cursor
+	m = drive(m, runeKey('K'))
+	if m.cursor != first {
+		t.Errorf("K at the first stop moved: %d -> %d", first, m.cursor)
+	}
+}
+
+func TestJumpKeysClearPendingFocus(t *testing.T) {
+	m := navModel(t)
+	m.focusSession = "dotfiles"
+	m.focusWindow = 2
+
+	m = drive(m, runeKey('J'))
+
+	if m.focusSession != "" {
+		t.Errorf("focusSession = %q, want empty after J", m.focusSession)
+	}
+	if m.focusWindow != -1 {
+		t.Errorf("focusWindow = %d, want -1 after J", m.focusWindow)
+	}
 }

@@ -397,6 +397,21 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.refreshCurrentPreview()
 			}
 
+		case "J":
+			m.focusSession = ""
+			m.focusWindow = -1
+			if idx, ok := nextSessionStop(m.items, m.cursor, 1); ok {
+				m.cursor = idx
+				return m, m.refreshCurrentPreview()
+			}
+		case "K":
+			m.focusSession = ""
+			m.focusWindow = -1
+			if idx, ok := nextSessionStop(m.items, m.cursor, -1); ok {
+				m.cursor = idx
+				return m, m.refreshCurrentPreview()
+			}
+
 		case "tab", "right", "l":
 			return m.expandCurrent()
 
