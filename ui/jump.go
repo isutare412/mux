@@ -1,8 +1,9 @@
 package ui
 
 // jumpReserved is the label permanently held back from the pool below. It is
-// handed to the last session's active window row instead, so `ss` always lands
-// on the session the user came from no matter how the tree is shaped.
+// handed to whichever end of the home/last toggle is currently the target —
+// the launch window when the cursor sits on the last session, the last
+// session otherwise — so `ss` always jumps to that row and, from there, back.
 const jumpReserved = 's'
 
 // jumpAlphabet is the ordered set of single-key labels used by jump mode.
@@ -17,6 +18,10 @@ const jumpAlphabet = "adfwecvbtyuiopmzghjklnqrx"
 // `s` is not currently pointing at. It is never pressable, so it renders muted
 // in every mode. U+00B7 is one cell wide, matching the single-column label slot.
 const jumpInactive = '·'
+
+// jumpInactiveLabel is jumpInactive pre-converted to a string, since assignLabels
+// and styleRow each need the string form once per row per frame.
+var jumpInactiveLabel = string(jumpInactive)
 
 // assignLabels walks the flattened item list top-to-bottom and assigns a letter
 // to each WINDOW row. The target row gets jumpReserved and the other end of the
@@ -41,7 +46,7 @@ func assignLabels(items []listItem, target, other rowRef) []string {
 			continue
 		}
 		if other.matches(it) {
-			labels[i] = string(jumpInactive)
+			labels[i] = jumpInactiveLabel
 			continue
 		}
 		if next >= len(jumpAlphabet) {
