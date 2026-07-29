@@ -147,6 +147,7 @@ Pair with [skimd](https://github.com/lunemis/skimd) to review AI-generated markd
 |---|---|
 | `j` / `k` | Move down / up |
 | `g` / `G` | Jump to first / last |
+| `J` / `K` | Jump to next / previous session |
 | `Tab` / `→` / `l` | Expand session → windows → panes |
 | `Shift+Tab` / `←` / `h` | Collapse one level |
 | `Enter` | Attach (focuses the selected window/pane) |

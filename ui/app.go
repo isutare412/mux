@@ -863,7 +863,7 @@ func renderHelp(m mode, reservedHint string) string {
 	}
 
 	keys := []struct{ key, desc string }{
-		{"↑↓/jk", "navigate"},
+		{"↑↓/jk/JK", "navigate"},
 		{"s", "jump"},
 		{"tab", "expand"},
 		{"⇧tab", "collapse"},
