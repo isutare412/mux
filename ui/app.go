@@ -471,6 +471,13 @@ func (m Model) updateJump(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.lastSession == "" {
 			return m, nil
 		}
+		// The target's session row is missing only when the filter hides it —
+		// every session in the filtered list contributes a row regardless of
+		// expansion. Bail before expanding or arming a focus: the jump moves the
+		// cursor now or not at all, never later when the filter is cleared.
+		if m.findItemIndex(itemSession, m.lastSession, 0, 0) < 0 {
+			return m, nil
+		}
 		var cmds []tea.Cmd
 		if !m.tree.isSessionExpanded(m.lastSession) {
 			m.tree.setSessionExpanded(m.lastSession, true)

@@ -290,11 +290,17 @@ func TestJumpToLastTargetNoOpWithoutTarget(t *testing.T) {
 	}
 }
 
-// A filtered-out target leaves the focus pending. Navigation clears it, so it
-// cannot fire unexpectedly once the filter is lifted.
+// A filtered-out target must make `ss` inert: the row is genuinely absent (its
+// windows are loaded, so only the filter is hiding it), and the jump must move
+// the cursor now or not at all — never arm a focus that fires later when the
+// filter is cleared.
 func TestJumpToLastTargetHiddenByFilter(t *testing.T) {
 	m := NewModel()
 	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}, {Name: "dotfiles"}}})
+	m = drive(m, windowsLoadedMsg{sessionName: "dotfiles", windows: []tmux.Window{
+		{Index: 1, Name: "nvim"},
+		{Index: 2, Name: "claude"},
+	}})
 	m = drive(m, lastTargetMsg{session: "dotfiles", window: 2, ok: true})
 	m = drive(m, filterAppliedMsg{text: "mux"}) // dotfiles is filtered out
 	start := m.cursor
@@ -305,10 +311,35 @@ func TestJumpToLastTargetHiddenByFilter(t *testing.T) {
 	if m.cursor != start {
 		t.Errorf("cursor moved to a filtered-out target: %d -> %d", start, m.cursor)
 	}
-
-	m = drive(m, tea.KeyMsg{Type: tea.KeyDown})
 	if m.focusSession != "" {
-		t.Errorf("focusSession = %q, want empty after navigation clears pending focus", m.focusSession)
+		t.Errorf("focusSession = %q, want empty: ss must not arm a focus for a filtered-out target", m.focusSession)
+	}
+
+	m = drive(m, filterAppliedMsg{text: "", cleared: true})
+	it := m.currentItem()
+	if it != nil && it.session.Name == "dotfiles" {
+		t.Errorf("clearing the filter must not move the cursor onto dotfiles; got %+v", it)
+	}
+}
+
+// Same root cause as the filter-hides-the-row case above, but with the target
+// also collapsed: ss must not expand a session the user can't see just because
+// it happens to be the jump target.
+func TestJumpToLastTargetFilteredAndCollapsedDoesNotExpand(t *testing.T) {
+	m := NewModel()
+	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}, {Name: "dotfiles"}}})
+	m.tree.setSessionExpanded("dotfiles", false) // user collapsed it
+	m = drive(m, lastTargetMsg{session: "dotfiles", window: 2, ok: true})
+	m = drive(m, filterAppliedMsg{text: "mux"}) // dotfiles is filtered out
+
+	m = drive(m, runeKey('s'))
+	m = drive(m, runeKey('s'))
+
+	if m.tree.isSessionExpanded("dotfiles") {
+		t.Error("ss must not expand a filtered-out collapsed session")
+	}
+	if m.focusSession != "" {
+		t.Errorf("focusSession = %q, want empty for a filtered-out target", m.focusSession)
 	}
 }
 
