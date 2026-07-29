@@ -6,8 +6,34 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/lunemis/mux/tmux"
+	"github.com/muesli/termenv"
 )
+
+// drawBorder must colorize the border glyphs only. Preview content is raw
+// capture-pane output: text the pane drew in the terminal's default color
+// carries no ANSI of its own, so wrapping the whole block in the border color
+// repaints it. That is what rendered every plain line of the preview gray.
+func TestDrawBorderLeavesContentUnstyled(t *testing.T) {
+	old := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(old)
+
+	const content = "plain captured text"
+	out := drawBorder(padOrTruncate(content, 24), 26, 1)
+
+	idx := strings.Index(out, content)
+	if idx < 0 {
+		t.Fatalf("content missing from bordered output: %q", out)
+	}
+	if !strings.HasSuffix(out[:idx], "\x1b[0m") {
+		t.Errorf("content sits inside the border's color span; it must follow a reset.\nprefix: %q", out[:idx])
+	}
+	if !strings.Contains(out, "\x1b[") {
+		t.Error("border lost its color entirely")
+	}
+}
 
 func TestLayoutDimensions(t *testing.T) {
 	sessions := []tmux.Session{

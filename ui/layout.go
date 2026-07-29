@@ -60,16 +60,26 @@ func joinHorizontalFixed(left, right string) string {
 	return strings.Join(result, "\n")
 }
 
-// drawBorder wraps content lines with a rounded border
+// drawBorder wraps content lines with a rounded border.
+//
+// Only the border glyphs are colored. The content is emitted byte-for-byte
+// between two independently styled bars, because it is raw capture-pane output:
+// text the pane drew in the terminal's default color carries no ANSI of its
+// own, so styling the assembled block would repaint it in the border color.
+// Each bar closes its own color span, which also stops an unterminated sequence
+// inside the content from bleeding past the frame.
 func drawBorder(content string, width, height int) string {
 	innerWidth := width - 2
 	lines := strings.Split(content, "\n")
+
+	borderStyle := lipgloss.NewStyle().Foreground(colorBorder)
+	bar := borderStyle.Render("│")
 
 	// Build bordered output
 	result := make([]string, 0, height+2)
 
 	// Top border
-	result = append(result, "╭"+strings.Repeat("─", innerWidth)+"╮")
+	result = append(result, borderStyle.Render("╭"+strings.Repeat("─", innerWidth)+"╮"))
 
 	// Content lines (pad/truncate to exactly height)
 	for i := 0; i < height; i++ {
@@ -78,13 +88,11 @@ func drawBorder(content string, width, height int) string {
 			line = lines[i]
 		}
 		line = padOrTruncate(line, innerWidth)
-		result = append(result, "│"+line+"│")
+		result = append(result, bar+line+bar)
 	}
 
 	// Bottom border
-	result = append(result, "╰"+strings.Repeat("─", innerWidth)+"╯")
+	result = append(result, borderStyle.Render("╰"+strings.Repeat("─", innerWidth)+"╯"))
 
-	return lipgloss.NewStyle().
-		Foreground(colorBorder).
-		Render(strings.Join(result, "\n"))
+	return strings.Join(result, "\n")
 }
