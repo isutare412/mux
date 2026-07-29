@@ -100,7 +100,9 @@ func styleRow(text string, base lipgloss.Style, label string, active bool) strin
 	}
 	_, size := utf8.DecodeRuneInString(text)
 	labelStyle := base.Foreground(colorMuted)
-	if active {
+	// The inactive-anchor dot is not a key you can press, so it stays muted
+	// when jump mode brightens the real labels.
+	if active && label != string(jumpInactive) {
 		labelStyle = base.Bold(true).Foreground(colorAccent)
 	}
 	return labelStyle.Render(label) + base.Render(text[size:])

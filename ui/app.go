@@ -474,8 +474,9 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // updateJump handles keys while jump mode is active. A label key moves the
 // cursor to that row and exits to list mode (it does NOT attach); the reserved
-// key jumps to the last session's active window, expanding it if needed; esc or
-// any other key cancels jump mode.
+// key toggles between the last session's window and the launch window,
+// expanding the target's session if needed; esc or any other key cancels jump
+// mode.
 func (m Model) updateJump(msg tea.Msg) (tea.Model, tea.Cmd) {
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
@@ -487,26 +488,27 @@ func (m Model) updateJump(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if key.String() == string(jumpReserved) {
 		m.mode = modeList
-		if m.lastSession == "" {
+		target, _ := m.jumpAnchors()
+		if !target.present() {
 			return m, nil
 		}
 		// The target's session row is missing only when the filter hides it —
 		// every session in the filtered list contributes a row regardless of
 		// expansion. Bail before expanding or arming a focus: the jump moves the
 		// cursor now or not at all, never later when the filter is cleared.
-		if m.findItemIndex(itemSession, m.lastSession, 0, 0) < 0 {
+		if m.findItemIndex(itemSession, target.session, 0, 0) < 0 {
 			return m, nil
 		}
 		var cmds []tea.Cmd
-		if !m.tree.isSessionExpanded(m.lastSession) {
-			m.tree.setSessionExpanded(m.lastSession, true)
-			cmds = append(cmds, loadWindows(m.lastSession))
+		if !m.tree.isSessionExpanded(target.session) {
+			m.tree.setSessionExpanded(target.session, true)
+			cmds = append(cmds, loadWindows(target.session))
 		}
 		// Reuse the pending-focus machinery: rebuildItems snaps the cursor when
 		// the row is already present, otherwise the target stays pending until
 		// windowsLoadedMsg triggers the next rebuild.
-		m.focusSession = m.lastSession
-		m.focusWindow = m.lastWindow
+		m.focusSession = target.session
+		m.focusWindow = target.window
 		m.rebuildItems()
 		cmds = append(cmds, m.refreshCurrentPreview())
 		return m, tea.Batch(cmds...)
@@ -684,11 +686,28 @@ func (m *Model) currentSessionName() string {
 // state changes.
 func (m *Model) rebuildItems() {
 	m.items = flatten(m.filtered, &m.tree)
-	m.labels = assignLabels(m.items, m.lastSession, m.lastWindow)
 	if m.cursor >= len(m.items) {
 		m.cursor = max(0, len(m.items)-1)
 	}
 	m.applyPendingFocus()
+	// Labels depend on the cursor — jumpAnchors swaps the toggle's ends based on
+	// where it sits — so they must be assigned after applyPendingFocus has had
+	// its chance to move it.
+	target, other := m.jumpAnchors()
+	m.labels = assignLabels(m.items, target, other)
+}
+
+// reservedHint names where the reserved key currently points, for the help bar.
+// Empty when there is no target, in which case the segment is omitted.
+func (m *Model) reservedHint() string {
+	target, _ := m.jumpAnchors()
+	if !target.present() {
+		return ""
+	}
+	if target.session == m.lastSession && target.window == m.lastWindow {
+		return "last"
+	}
+	return "back"
 }
 
 // applyPendingFocus moves the cursor to the pending focus target if its row is
@@ -748,7 +767,7 @@ func (m Model) viewMain() string {
 	title := titleStyle.Render("⚡ tmux sessions " + count)
 
 	// Help bar
-	help := renderHelp(m.mode, m.lastSession != "")
+	help := renderHelp(m.mode, m.reservedHint())
 
 	// Filter / confirm bar
 	var extraBar string
@@ -821,13 +840,13 @@ func (m Model) viewWithOverlay(overlay string) string {
 		box)
 }
 
-func renderHelp(m mode, hasTarget bool) string {
+func renderHelp(m mode, reservedHint string) string {
 	if m == modeJump {
 		segments := []string{
 			helpKeyStyle.Render("a…z") + " " + helpStyle.Render("jump"),
 		}
-		if hasTarget {
-			segments = append(segments, helpKeyStyle.Render("s")+" "+helpStyle.Render("last"))
+		if reservedHint != "" {
+			segments = append(segments, helpKeyStyle.Render("s")+" "+helpStyle.Render(reservedHint))
 		}
 		segments = append(segments, helpKeyStyle.Render("esc")+" "+helpStyle.Render("cancel"))
 		return strings.Join(segments, helpStyle.Render("  •  "))

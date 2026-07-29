@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/lunemis/mux/tmux"
+	"github.com/muesli/termenv"
 )
 
 func TestAssignLabels_LabelsWindowsOnly(t *testing.T) {
@@ -15,7 +17,7 @@ func TestAssignLabels_LabelsWindowsOnly(t *testing.T) {
 		{kind: itemPane},
 		{kind: itemWindow},
 	}
-	got := assignLabels(items, "", 0)
+	got := assignLabels(items, rowRef{}, rowRef{})
 	want := []string{"", "a", "", "d"}
 	if len(got) != len(want) {
 		t.Fatalf("len = %d, want %d", len(got), len(want))
@@ -33,7 +35,7 @@ func TestAssignLabels_Overflow(t *testing.T) {
 	for i := range items {
 		items[i] = listItem{kind: itemWindow}
 	}
-	got := assignLabels(items, "", 0)
+	got := assignLabels(items, rowRef{}, rowRef{})
 	if got[len(jumpAlphabet)-1] == "" {
 		t.Errorf("last in-range row should have a label")
 	}
@@ -125,7 +127,7 @@ func TestJumpModeNonLabelCancels(t *testing.T) {
 }
 
 func TestRenderHelp_JumpModeHint(t *testing.T) {
-	help := renderHelp(modeJump, true)
+	help := renderHelp(modeJump, "last")
 	if !strings.Contains(help, "jump") {
 		t.Errorf("jump-mode help should mention jump: %q", help)
 	}
@@ -135,7 +137,7 @@ func TestRenderHelp_JumpModeHint(t *testing.T) {
 }
 
 func TestRenderHelp_ListModeShowsJumpKey(t *testing.T) {
-	help := renderHelp(modeList, true)
+	help := renderHelp(modeList, "")
 	if !strings.Contains(help, "jump") {
 		t.Errorf("list-mode help should advertise jump: %q", help)
 	}
@@ -174,7 +176,7 @@ func TestAssignLabels_ReservesSForLastTarget(t *testing.T) {
 		{kind: itemWindow, session: &sessions[1], window: &windows[0]},
 	}
 
-	got := assignLabels(items, "dotfiles", 0)
+	got := assignLabels(items, rowRef{session: "dotfiles", window: 0}, rowRef{})
 	// The target takes "s" without consuming a pool letter, so the other
 	// window rows keep the labels they would have had anyway.
 	want := []string{"", "a", "d", "", "s"}
@@ -200,7 +202,7 @@ func TestAssignLabels_ReservedRowOrderIndependent(t *testing.T) {
 		{kind: itemWindow, session: &sessions[1], window: &windows[0]},
 	}
 
-	got := assignLabels(items, "dotfiles", 0)
+	got := assignLabels(items, rowRef{session: "dotfiles", window: 0}, rowRef{})
 	want := []string{"", "s", "a", "", "d"}
 	for i := range want {
 		if got[i] != want[i] {
@@ -218,7 +220,7 @@ func TestAssignLabels_NoRowGetsSWithoutATarget(t *testing.T) {
 		{kind: itemWindow, session: &sessions[0], window: &windows[1]},
 	}
 
-	for i, label := range assignLabels(items, "", 0) {
+	for i, label := range assignLabels(items, rowRef{}, rowRef{}) {
 		if label == string(jumpReserved) {
 			t.Errorf("labels[%d] = %q, want no reserved label without a target", i, label)
 		}
@@ -368,14 +370,14 @@ func TestJumpToLastTargetFilteredAndCollapsedDoesNotExpand(t *testing.T) {
 }
 
 func TestRenderHelp_JumpModeAdvertisesReservedKey(t *testing.T) {
-	help := renderHelp(modeJump, true)
+	help := renderHelp(modeJump, "last")
 	if !strings.Contains(help, "last") {
 		t.Errorf("jump-mode help should mention the reserved last-session key: %q", help)
 	}
 }
 
 func TestRenderHelp_JumpModeHidesReservedKeyWithoutTarget(t *testing.T) {
-	help := renderHelp(modeJump, false)
+	help := renderHelp(modeJump, "")
 	if strings.Contains(help, "last") {
 		t.Errorf("jump-mode help should not advertise s/last without a target: %q", help)
 	}
@@ -508,5 +510,207 @@ func TestJumpAnchors_PaneUnderLastIsNotLast(t *testing.T) {
 	target, _ := m.jumpAnchors()
 	if want := (rowRef{session: "dotfiles", window: 1}); target != want {
 		t.Errorf("target = %+v, want %+v (pane row must not count as the last row)", target, want)
+	}
+}
+
+// The pool must not depend on the cursor. Both anchors are reserved at all
+// times, so only which of them shows `s` changes as the cursor moves — every
+// other row keeps its letter. This is the whole reason both ends are reserved.
+func TestAssignLabels_PoolIsStableAcrossCursorPositions(t *testing.T) {
+	positions := []struct {
+		name    string
+		session string
+		window  int
+	}{
+		{"cursor on home", "mux", 0},
+		{"cursor on last", "dotfiles", 1},
+		{"cursor on neither", "mux", 1},
+	}
+
+	var reference []string
+	for _, p := range positions {
+		m := anchorModel(t)
+		m.cursor = rowIndex(t, m, p.session, p.window)
+		target, other := m.jumpAnchors()
+		labels := assignLabels(m.items, target, other)
+
+		// Collect the labels of every row that is not an anchor.
+		var pool []string
+		for i, it := range m.items {
+			if it.kind != itemWindow || target.matches(it) || other.matches(it) {
+				continue
+			}
+			pool = append(pool, labels[i])
+		}
+		if reference == nil {
+			reference = pool
+			continue
+		}
+		if len(pool) != len(reference) {
+			t.Fatalf("%s: pool size %d, want %d", p.name, len(pool), len(reference))
+		}
+		for i := range pool {
+			if pool[i] != reference[i] {
+				t.Errorf("%s: pool[%d] = %q, want %q (pool must not move with the cursor)",
+					p.name, i, pool[i], reference[i])
+			}
+		}
+	}
+}
+
+func TestAssignLabels_TargetGetsSOtherGetsDot(t *testing.T) {
+	m := anchorModel(t)
+	m.cursor = rowIndex(t, m, "mux", 0) // on home, so the key points at last
+	target, other := m.jumpAnchors()
+	labels := assignLabels(m.items, target, other)
+
+	if got := labels[rowIndex(t, m, "dotfiles", 1)]; got != string(jumpReserved) {
+		t.Errorf("target label = %q, want %q", got, string(jumpReserved))
+	}
+	if got := labels[rowIndex(t, m, "mux", 0)]; got != string(jumpInactive) {
+		t.Errorf("other label = %q, want %q", got, string(jumpInactive))
+	}
+}
+
+// The toggle flips which end carries `s` when the cursor sits on the last row.
+func TestAssignLabels_ToggleFlipsWhichEndCarriesS(t *testing.T) {
+	m := anchorModel(t)
+	m.cursor = rowIndex(t, m, "dotfiles", 1) // on last, so the key points home
+	target, other := m.jumpAnchors()
+	labels := assignLabels(m.items, target, other)
+
+	if got := labels[rowIndex(t, m, "mux", 0)]; got != string(jumpReserved) {
+		t.Errorf("home label = %q, want %q", got, string(jumpReserved))
+	}
+	if got := labels[rowIndex(t, m, "dotfiles", 1)]; got != string(jumpInactive) {
+		t.Errorf("last label = %q, want %q", got, string(jumpInactive))
+	}
+}
+
+// An anchor whose row is not in the list labels nothing and consumes no letter.
+func TestAssignLabels_AbsentAnchorConsumesNothing(t *testing.T) {
+	m := anchorModel(t)
+	withAnchors := assignLabels(m.items, rowRef{session: "mux", window: 0}, rowRef{})
+	offList := assignLabels(m.items, rowRef{session: "ghost", window: 9}, rowRef{})
+
+	// mux:0 is reserved in the first call and an ordinary pool row in the
+	// second, so the pool advances by one more row there.
+	if withAnchors[rowIndex(t, m, "mux", 0)] != string(jumpReserved) {
+		t.Fatalf("setup: mux:0 should carry the reserved label")
+	}
+	if offList[rowIndex(t, m, "mux", 0)] != string(jumpAlphabet[0]) {
+		t.Errorf("off-list anchor should not reserve anything; mux:0 = %q, want %q",
+			offList[rowIndex(t, m, "mux", 0)], string(jumpAlphabet[0]))
+	}
+}
+
+// rebuildItems assigns labels AFTER applyPendingFocus moves the cursor. With
+// the order reversed the labels describe the pre-move cursor.
+func TestRebuildItemsLabelsFollowThePostFocusCursor(t *testing.T) {
+	m := anchorModel(t)
+	m.cursor = rowIndex(t, m, "mux", 0)
+
+	// Arm a pending focus for the last row and rebuild, exactly as `ss` does.
+	m.focusSession = "dotfiles"
+	m.focusWindow = 1
+	m.rebuildItems()
+
+	if m.cursor != rowIndex(t, m, "dotfiles", 1) {
+		t.Fatalf("setup: cursor did not land on the last row")
+	}
+	// Cursor now sits on last, so the key must point home and home must carry s.
+	if got := m.labels[rowIndex(t, m, "mux", 0)]; got != string(jumpReserved) {
+		t.Errorf("home label = %q, want %q — labels were assigned before the cursor settled",
+			got, string(jumpReserved))
+	}
+}
+
+func TestReservedKeyTogglesBackHome(t *testing.T) {
+	m := anchorModel(t)
+	m.cursor = rowIndex(t, m, "mux", 0)
+
+	m = drive(m, runeKey('s'))
+	m = drive(m, runeKey('s'))
+	if want := rowIndex(t, m, "dotfiles", 1); m.cursor != want {
+		t.Fatalf("first ss: cursor = %d, want %d (last row)", m.cursor, want)
+	}
+
+	m = drive(m, runeKey('s'))
+	m = drive(m, runeKey('s'))
+	if want := rowIndex(t, m, "mux", 0); m.cursor != want {
+		t.Fatalf("second ss: cursor = %d, want %d (home row)", m.cursor, want)
+	}
+	if (m.attachTarget != previewKey{}) {
+		t.Errorf("toggle must not attach, got %+v", m.attachTarget)
+	}
+}
+
+// From a row that is neither anchor, the key goes outward, not home.
+func TestReservedKeyFromThirdRowGoesToLast(t *testing.T) {
+	m := anchorModel(t)
+	m.cursor = rowIndex(t, m, "mux", 1)
+
+	m = drive(m, runeKey('s'))
+	m = drive(m, runeKey('s'))
+
+	if want := rowIndex(t, m, "dotfiles", 1); m.cursor != want {
+		t.Errorf("cursor = %d, want %d (last row)", m.cursor, want)
+	}
+}
+
+func TestRenderHelp_ReservedHint(t *testing.T) {
+	if help := renderHelp(modeJump, "last"); !strings.Contains(help, "last") {
+		t.Errorf("help should show the outbound hint: %q", help)
+	}
+	if help := renderHelp(modeJump, "back"); !strings.Contains(help, "back") {
+		t.Errorf("help should show the return hint: %q", help)
+	}
+	help := renderHelp(modeJump, "")
+	if strings.Contains(help, "last") || strings.Contains(help, "back") {
+		t.Errorf("help should omit the segment with no target: %q", help)
+	}
+	if !strings.Contains(help, "jump") || !strings.Contains(help, "cancel") {
+		t.Errorf("help lost its other segments: %q", help)
+	}
+}
+
+func TestReservedHintFollowsTheAnchors(t *testing.T) {
+	m := anchorModel(t)
+
+	m.cursor = rowIndex(t, m, "mux", 0)
+	if got := m.reservedHint(); got != "last" {
+		t.Errorf("hint on home = %q, want \"last\"", got)
+	}
+
+	m.cursor = rowIndex(t, m, "dotfiles", 1)
+	if got := m.reservedHint(); got != "back" {
+		t.Errorf("hint on last = %q, want \"back\"", got)
+	}
+
+	m.lastSession = ""
+	if got := m.reservedHint(); got != "" {
+		t.Errorf("hint with no target = %q, want empty", got)
+	}
+}
+
+// The dot is not a key you can press, so jump mode must not brighten it.
+// The profile must be forced: lipgloss strips color when stdout is not a TTY,
+// which would make both comparisons below trivially equal and the test vacuous.
+func TestStyleRowKeepsTheInactiveDotMuted(t *testing.T) {
+	old := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(old)
+
+	base := lipgloss.NewStyle()
+	dotResting := styleRow(" row", base, string(jumpInactive), false)
+	dotActive := styleRow(" row", base, string(jumpInactive), true)
+	if dotResting != dotActive {
+		t.Errorf("the inactive dot changed with jump mode:\nrest:   %q\nactive: %q", dotResting, dotActive)
+	}
+
+	sResting := styleRow(" row", base, string(jumpReserved), false)
+	sActive := styleRow(" row", base, string(jumpReserved), true)
+	if sResting == sActive {
+		t.Errorf("the reserved label should still brighten in jump mode: %q", sActive)
 	}
 }

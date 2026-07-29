@@ -13,22 +13,35 @@ const jumpReserved = 's'
 // row rather than cancelling — use esc to cancel.
 const jumpAlphabet = "adfwecvbtyuiopmzghjklnqrx"
 
+// jumpInactive marks the other end of the reserved key's toggle — the anchor
+// `s` is not currently pointing at. It is never pressable, so it renders muted
+// in every mode. U+00B7 is one cell wide, matching the single-column label slot.
+const jumpInactive = '·'
+
 // assignLabels walks the flattened item list top-to-bottom and assigns a letter
-// to each WINDOW row. The row matching (lastSession, lastWindow) gets
-// jumpReserved without consuming a letter from jumpAlphabet, so every other row
-// keeps the label it would have had regardless of where the target sits — or
-// whether there is one. Session rows, pane rows, and any rows beyond the
-// alphabet receive "" (no label; still reachable via j/k). The result is a slice
-// parallel to items.
-func assignLabels(items []listItem, lastSession string, lastWindow int) []string {
+// to each WINDOW row. The target row gets jumpReserved and the other end of the
+// toggle gets jumpInactive; neither consumes a letter from jumpAlphabet.
+//
+// Reserving BOTH anchors, not just whichever one is currently the target, is
+// what keeps the pool stable: the set of skipped rows never changes as the
+// cursor moves, so every other row keeps its letter. An absent anchor, or one
+// whose row is not in items, simply matches nothing.
+//
+// Session rows, pane rows, and any rows beyond the alphabet receive "" (no
+// label; still reachable via j/k). The result is a slice parallel to items.
+func assignLabels(items []listItem, target, other rowRef) []string {
 	labels := make([]string, len(items))
 	next := 0
 	for i, it := range items {
 		if it.kind != itemWindow {
 			continue
 		}
-		if lastSession != "" && it.session.Name == lastSession && it.window.Index == lastWindow {
+		if target.matches(it) {
 			labels[i] = string(jumpReserved)
+			continue
+		}
+		if other.matches(it) {
+			labels[i] = string(jumpInactive)
 			continue
 		}
 		if next >= len(jumpAlphabet) {
