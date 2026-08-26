@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/lunemis/mux/tmux"
 	"github.com/muesli/termenv"
 )
@@ -143,4 +144,54 @@ func truncStr(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// padOrTruncate is the one choke point every row and every panel line passes
+// through, and its contract is "exactly width visible cells". A control
+// character breaks that contract silently: ansi.StringWidth scores it as zero
+// while the terminal acts on it — a tab advances to the next tab stop, a
+// carriage return jumps to column 0, a newline opens a row. The frame then
+// stops matching the screen, which scrolls the alt buffer and strands stale
+// rows from earlier frames. Neutralize them here so no caller has to remember.
+func TestPadOrTruncateNeutralizesControlCharacters(t *testing.T) {
+	cases := []struct {
+		name  string
+		in    string
+		width int
+	}{
+		{"tab", "a\tb", 10},
+		{"carriage return", "a\rb", 10},
+		{"newline", "a\nb", 10},
+		{"overlong input still truncates", "aaaa\tbbbb\rcccc\ndddd", 8},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := padOrTruncate(c.in, c.width)
+			if strings.ContainsAny(got, "\t\r\n") {
+				t.Errorf("padOrTruncate(%q, %d) = %q, want no control characters", c.in, c.width, got)
+			}
+			if w := ansi.StringWidth(got); w != c.width {
+				t.Errorf("padOrTruncate(%q, %d) width = %d, want %d", c.in, c.width, w, c.width)
+			}
+		})
+	}
+}
+
+// Neutralizing control characters must not touch the escape sequences lipgloss
+// emits — those carry the row's color and are what make the border, the cursor
+// highlight, and the claude glyphs readable.
+func TestPadOrTruncateKeepsStylingAroundControlCharacters(t *testing.T) {
+	old := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(old)
+
+	styled := lipgloss.NewStyle().Foreground(colorAccent).Render("a\tb")
+	got := padOrTruncate(styled, 10)
+
+	if strings.ContainsAny(got, "\t\r\n") {
+		t.Errorf("padOrTruncate(%q, 10) = %q, want no control characters", styled, got)
+	}
+	if !strings.Contains(got, "\x1b[") {
+		t.Errorf("padOrTruncate(%q, 10) = %q, want the styling escape sequences kept", styled, got)
+	}
 }

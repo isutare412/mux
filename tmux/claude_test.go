@@ -733,3 +733,41 @@ func TestResolveClaudeSession(t *testing.T) {
 		})
 	})
 }
+
+// A recap with no ASCII sentence terminator — the norm for Korean summaries —
+// survives firstSentence whole, newlines and all. The list view draws one row
+// per item and measures width with ansi.StringWidth, which scores control
+// characters as zero cells while the terminal acts on them: a tab advances to
+// the next tab stop, a carriage return jumps to column 0, a newline opens a
+// row. Any survivor desyncs mux's frame from the screen, so cleanRecapText
+// must fold them all into single spaces.
+func TestCleanRecapTextCollapsesControlCharacters(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"newline becomes a space",
+			"README를 한글로 다시 쓰는 중이고\n요청하신 수정도 반영했습니다",
+			"README를 한글로 다시 쓰는 중이고 요청하신 수정도 반영했습니다"},
+		{"tab becomes a space",
+			"작업\t내용\t정리",
+			"작업 내용 정리"},
+		{"carriage return becomes a space",
+			"앞부분\r뒷부분",
+			"앞부분 뒷부분"},
+		{"runs of whitespace collapse to one space",
+			"첫 줄\n\n  \t둘째 줄",
+			"첫 줄 둘째 줄"},
+		{"interior single spaces are preserved",
+			"iptables나 ingress 설정을 확인",
+			"iptables나 ingress 설정을 확인"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := cleanRecapText(c.in); got != c.want {
+				t.Errorf("cleanRecapText(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}

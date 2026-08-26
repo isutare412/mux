@@ -483,9 +483,18 @@ func firstSentence(s string) string {
 	return s
 }
 
+// controlRunRe matches any run of whitespace or control characters. Recap
+// sources are free-form prose: an away_summary spans paragraphs and an
+// assistant turn carries markdown, so newlines and tabs ride along. The list
+// view draws one row per item and measures width with ansi.StringWidth, which
+// scores those as zero cells while the terminal acts on them, so they have to
+// go before the text ever reaches a row.
+var controlRunRe = regexp.MustCompile(`[\s\p{Cc}]+`)
+
 // cleanRecapText normalizes a raw recap source (away_summary, ai-title, or last
 // assistant text) into a single tidy line for the list view.
 func cleanRecapText(s string) string {
+	s = controlRunRe.ReplaceAllString(s, " ")
 	s = strings.TrimSpace(s)
 	if i := strings.LastIndex(strings.ToLower(s), "(disable recaps in /config)"); i >= 0 {
 		s = strings.TrimSpace(s[:i])

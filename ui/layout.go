@@ -7,8 +7,40 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// isControl reports whether r is a control character other than ESC. ESC is
+// spared because it opens the SGR sequences lipgloss emits for color.
+func isControl(r rune) bool {
+	return (r < 0x20 && r != 0x1b) || r == 0x7f || (r >= 0x80 && r <= 0x9f)
+}
+
+// sanitizeControls replaces control characters with spaces.
+//
+// Every row and every panel line reaches the screen through padOrTruncate, and
+// its contract is a fixed cell count. Control characters break that contract
+// silently: ansi.StringWidth — and bubbletea's own line diff, which uses the
+// same measure — scores them as zero cells while the terminal acts on them. A
+// tab advances to the next tab stop and a newline opens a row, so the frame
+// outgrows the terminal and the alt buffer scrolls; a carriage return jumps to
+// column 0 and the rest of the line repaints over the panel beside it. Either
+// way the renderer's cached lines stop matching the screen and stale rows from
+// earlier frames stay put. The text that carries them is not ours — Claude
+// recaps, tmux window names, capture-pane output — so neutralize it here
+// rather than at each call site.
+func sanitizeControls(s string) string {
+	if strings.IndexFunc(s, isControl) < 0 {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if isControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
+}
+
 // padOrTruncate ensures a string is exactly `width` visible characters
 func padOrTruncate(s string, width int) string {
+	s = sanitizeControls(s)
 	w := ansi.StringWidth(s)
 	if w > width {
 		return ansi.Truncate(s, width, "")

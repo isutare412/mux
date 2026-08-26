@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -245,5 +246,40 @@ func TestRenderListView_LabelsVisibleWithoutJumpMode(t *testing.T) {
 	accentOpen := styleOpen(lipgloss.NewStyle().Bold(true).Foreground(colorAccent))
 	if !strings.Contains(active, accentOpen) {
 		t.Errorf("active label should be drawn in bold accent: %q", active)
+	}
+}
+
+// A Claude recap is free-form prose and can carry a newline. The list draws one
+// row per item and places the cursor highlight by item index, so a row that
+// expands into two pushes every row below it down, drops the last item off the
+// bottom of the panel, and leaves the highlight on the wrong session.
+func TestRenderListViewKeepsOneRowPerItem(t *testing.T) {
+	st := newTreeState()
+	sess := tmux.Session{Name: "s"}
+	var items []listItem
+	for i := 0; i < 4; i++ {
+		st.panesCache[paneCacheKey{session: "s", window: i}] = []tmux.Pane{{PID: 100 + i}}
+		st.claudeCache[100+i] = tmux.ClaudeInfo{
+			State: tmux.ClaudeIdle,
+			Recap: "첫 줄 요약\n둘째 줄 요약",
+		}
+		items = append(items, listItem{
+			kind:    itemWindow,
+			session: &sess,
+			window:  &tmux.Window{Index: i, Name: "claude"},
+		})
+	}
+
+	out := renderListView(items, 0, "", &st, 80, 9, nil, false)
+	lines := strings.Split(out, "\n")
+	if len(lines) != 9 {
+		t.Fatalf("panel has %d lines, want 9", len(lines))
+	}
+
+	for i := range items {
+		row := ansi.Strip(lines[i+1]) // lines[0] is the top border
+		if want := fmt.Sprintf("%d:claude", i); !strings.Contains(row, want) {
+			t.Errorf("content row %d = %q, want it to hold %q", i, row, want)
+		}
 	}
 }
