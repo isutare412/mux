@@ -399,3 +399,66 @@ func TestInvertedWheelStopsAtTheEnds(t *testing.T) {
 		t.Errorf("cursor = %d, want 0 (already at the top)", m.cursor)
 	}
 }
+
+// update applies a message and hands back both the model and its command.
+func update(m Model, msg tea.Msg) (Model, tea.Cmd) {
+	next, cmd := m.Update(msg)
+	return next.(Model), cmd
+}
+
+func TestCloseButtonSitsAtTheTitleRowsRightEnd(t *testing.T) {
+	m := listModel(t, 100, 30)
+
+	title := strings.Split(m.View(), "\n")[0]
+	plain := ansi.Strip(title)
+
+	if !strings.Contains(plain, "✕") {
+		t.Fatalf("no close button in the title row: %q", plain)
+	}
+	if w := ansi.StringWidth(plain); w != 100 {
+		t.Errorf("title row width = %d, want 100 (padded out to the button)", w)
+	}
+	if !strings.HasSuffix(strings.TrimRight(plain, " "), "✕") {
+		t.Errorf("close button is not at the right end: %q", plain)
+	}
+}
+
+func TestCloseButtonClickQuits(t *testing.T) {
+	m := listModel(t, 100, 30)
+
+	m, cmd := update(m, click(98, 0))
+
+	if cmd == nil {
+		t.Fatal("clicking the close button returned no command; want tea.Quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Errorf("command produced %T, want tea.QuitMsg", cmd())
+	}
+	if (m.attachTarget != previewKey{}) {
+		t.Errorf("closing must not attach, got %+v", m.attachTarget)
+	}
+}
+
+func TestCloseButtonIsThreeCellsWide(t *testing.T) {
+	m := listModel(t, 100, 30)
+
+	for _, x := range []int{97, 98, 99} {
+		if _, cmd := update(m, click(x, 0)); cmd == nil {
+			t.Errorf("click at x=%d missed the close button", x)
+		}
+	}
+	if _, cmd := update(m, click(96, 0)); cmd != nil {
+		t.Error("click left of the close button should do nothing")
+	}
+}
+
+func TestNarrowWindowDropsTheCloseButton(t *testing.T) {
+	m := listModel(t, 20, 30)
+
+	if plain := ansi.Strip(strings.Split(m.View(), "\n")[0]); strings.Contains(plain, "✕") {
+		t.Errorf("close button drawn over the title in a narrow window: %q", plain)
+	}
+	if _, cmd := update(m, click(18, 0)); cmd != nil {
+		t.Error("there is no button to click in a narrow window")
+	}
+}

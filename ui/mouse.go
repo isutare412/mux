@@ -115,6 +115,10 @@ func (m Model) wheel(x, y, step int) (tea.Model, tea.Cmd) {
 
 // pressRow handles a left press at a screen coordinate.
 func (m Model) pressRow(x, y int) (tea.Model, tea.Cmd) {
+	if m.overCloseButton(x, y) {
+		return m, tea.Quit
+	}
+
 	idx, zone := m.rowAt(x, y)
 	if zone == zoneNone {
 		return m, nil
@@ -159,4 +163,11 @@ func (m Model) rowExpanded(idx int) bool {
 		return m.tree.isWindowExpanded(it.session.Name, it.window.Index)
 	}
 	return false
+}
+
+// overCloseButton reports whether a coordinate is on the title row's ✕. It
+// quits the way q does — no attach, no confirmation.
+func (m Model) overCloseButton(x, y int) bool {
+	col := m.closeButtonColumn()
+	return y == 0 && col >= 0 && x >= col && x < col+closeButtonWidth
 }

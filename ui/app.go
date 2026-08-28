@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/lunemis/mux/tmux"
 )
 
@@ -26,6 +27,13 @@ const (
 	// doubleClickInterval is how long a second press on the same row still
 	// counts as a double click.
 	doubleClickInterval = 400 * time.Millisecond
+
+	// closeButtonLabel is the mouse-only quit target drawn at the right end of
+	// the title row. It is three cells wide because one is too small to hit in
+	// a popup, and it is padded rather than bare so it does not touch the
+	// popup's border.
+	closeButtonLabel = " ✕ "
+	closeButtonWidth = 3
 
 	// Display limits
 	maxSessionNameDisplay = 18
@@ -813,6 +821,24 @@ func (m Model) extraBar() string {
 	return ""
 }
 
+// titleText returns the unstyled title, whose width decides whether the close
+// button fits beside it.
+func (m Model) titleText() string {
+	return fmt.Sprintf("⚡ tmux sessions (%d)", len(m.filtered))
+}
+
+// closeButtonColumn returns the first column of the close button on the title
+// row, or -1 when the window is too narrow to hold both the title and the
+// button. View and the hit test share it, so a button that is not drawn is not
+// clickable either.
+func (m Model) closeButtonColumn() int {
+	col := m.width - closeButtonWidth
+	if col < ansi.StringWidth(m.titleText()) {
+		return -1
+	}
+	return col
+}
+
 // panelGeometry describes where the list and preview panels land on screen.
 // viewMain renders from it and the mouse hit test resolves clicks through it,
 // so a click always picks the row the pointer is actually over.
@@ -847,8 +873,12 @@ func (m Model) panelGeometry() panelGeometry {
 
 func (m Model) viewMain() string {
 	// Title — count sessions only, not windows/panes
-	count := fmt.Sprintf("(%d)", len(m.filtered))
-	title := titleStyle.Render("⚡ tmux sessions " + count)
+	text := m.titleText()
+	title := titleStyle.Render(text)
+	if col := m.closeButtonColumn(); col >= 0 {
+		title += strings.Repeat(" ", col-ansi.StringWidth(text)) +
+			closeButtonStyle.Render(closeButtonLabel)
+	}
 
 	// Help bar
 	help := renderHelp(m.mode, m.reservedHint())

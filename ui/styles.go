@@ -35,6 +35,11 @@ var (
 			Bold(true).
 			Foreground(colorAccent)
 
+	// closeButtonStyle keeps the ✕ quiet: it is an affordance for the mouse,
+	// not something the eye should land on before the session list.
+	closeButtonStyle = lipgloss.NewStyle().
+				Foreground(colorMuted)
+
 	helpStyle = lipgloss.NewStyle().
 			Foreground(colorMuted)
 

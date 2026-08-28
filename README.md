@@ -166,6 +166,7 @@ Pair with [skimd](https://github.com/lunemis/skimd) to review AI-generated markd
 | Double-click a row | Attach |
 | Click the `▶`/`▼` chevron | Expand / collapse that row |
 | Wheel over the list | Move the cursor |
+| Click `✕` (top right) | Quit |
 
 Mouse events go to mux while it is running, including inside a tmux popup. That
 takes drag-to-select away from the terminal for as long as mux is up — hold
