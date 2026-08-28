@@ -176,16 +176,17 @@ func styleOpen(s lipgloss.Style) string {
 	return probe[:strings.Index(probe, "X")]
 }
 
-func TestStyleRow_LabelColorByActive(t *testing.T) {
+func TestRenderRow_LabelColorByActive(t *testing.T) {
 	base := lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF"))
+	segs := []rowSegment{{text: "  text"}}
 
-	inactive := styleRow("  text", base, "q", false)
+	inactive := renderRow(segs, base, 6, "q", false)
 	wantMuted := styleOpen(base.Foreground(colorMuted))
 	if !strings.HasPrefix(inactive, wantMuted) {
 		t.Errorf("inactive label should open with muted color %q, got %q", wantMuted, inactive)
 	}
 
-	active := styleRow("  text", base, "q", true)
+	active := renderRow(segs, base, 6, "q", true)
 	wantAccent := styleOpen(base.Bold(true).Foreground(colorAccent))
 	if !strings.HasPrefix(active, wantAccent) {
 		t.Errorf("active label should open with bold accent %q, got %q", wantAccent, active)

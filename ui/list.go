@@ -84,9 +84,24 @@ func renderSessionList(sessions []tmux.Session, cursor int, filter string, width
 	return renderListView(items, cursor, filter, &state, width, height, nil, false)
 }
 
+// rowSegment is one run of a list row that shares a foreground color and weight.
+// An empty fg inherits the row's base foreground; bold only ever adds weight on
+// top of the base, never removes it.
+//
+// Rows are assembled as plain-text segments and styled once, by renderRow. The
+// alternative — pre-rendering a colored piece and splicing it into the row text
+// — emits a bare SGR reset in the middle of the line, which drops the selected
+// row's background from that point on and leaves the highlight bar ending at
+// whatever badge happens to come first.
+type rowSegment struct {
+	text string
+	fg   lipgloss.Color
+	bold bool
+}
+
 // rowBaseStyle returns the base style for a list row: the cursor highlight when
-// selected, otherwise the given foreground. Row formatters layer their content
-// (and the jump label, via styleRow) on top of this.
+// selected, otherwise the given foreground. Segments layer their own color and
+// weight on top of this.
 func rowBaseStyle(selected bool, fg lipgloss.Color) lipgloss.Style {
 	if selected {
 		return lipgloss.NewStyle().
@@ -97,24 +112,88 @@ func rowBaseStyle(selected bool, fg lipgloss.Color) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(fg)
 }
 
-// styleRow applies base to text. When label is non-empty, the first cell of text
-// is replaced by the jump label. The label is muted (colorMuted) at rest and bold
-// accent (colorAccent) when active (jump mode), rendered on top of base so it keeps
-// base's background — e.g. the cursor row's highlight. The label and the remainder
-// are each rendered self-contained, so the label's SGR reset never leaks into the
-// rest of the row.
-func styleRow(text string, base lipgloss.Style, label string, active bool) string {
+// segStyle layers a segment's own color and weight onto the row's base style.
+func segStyle(base lipgloss.Style, s rowSegment) lipgloss.Style {
+	style := base
+	if s.fg != "" {
+		style = style.Foreground(s.fg)
+	}
+	if s.bold {
+		style = style.Bold(true)
+	}
+	return style
+}
+
+// applyJumpLabel swaps the row's first cell for the jump label, so the label
+// costs no width. The label is muted (colorMuted) at rest and bold accent
+// (colorAccent) in jump mode — except the inactive-anchor dot, which is not a
+// key you can press and therefore stays muted in every mode.
+func applyJumpLabel(segs []rowSegment, label string, active bool) []rowSegment {
 	if label == "" {
-		return base.Render(text)
+		return segs
 	}
-	_, size := utf8.DecodeRuneInString(text)
-	labelStyle := base.Foreground(colorMuted)
-	// The inactive-anchor dot is not a key you can press, so it stays muted
-	// when jump mode brightens the real labels.
-	if active && label != jumpInactiveLabel {
-		labelStyle = base.Bold(true).Foreground(colorAccent)
+	for i, s := range segs {
+		if s.text == "" {
+			continue
+		}
+		labelSeg := rowSegment{text: label, fg: colorMuted}
+		if active && label != jumpInactiveLabel {
+			labelSeg.fg = colorAccent
+			labelSeg.bold = true
+		}
+		_, size := utf8.DecodeRuneInString(s.text)
+		out := make([]rowSegment, 0, len(segs)+1)
+		out = append(out, labelSeg, rowSegment{text: s.text[size:], fg: s.fg, bold: s.bold})
+		return append(out, segs[i+1:]...)
 	}
-	return labelStyle.Render(label) + base.Render(text[size:])
+	return segs
+}
+
+// renderRow lays segments out into a row exactly width cells wide and paints
+// them on top of base. Every segment — and the trailing padding — is rendered
+// through base, so a selected row's background runs the full width instead of
+// stopping at the first colored badge.
+func renderRow(segs []rowSegment, base lipgloss.Style, width int, label string, active bool) string {
+	if width <= 0 {
+		return ""
+	}
+	segs = applyJumpLabel(segs, label, active)
+
+	var b strings.Builder
+	remaining := width
+	var pending rowSegment
+	flush := func() {
+		if pending.text != "" {
+			b.WriteString(segStyle(base, pending).Render(pending.text))
+			pending.text = ""
+		}
+	}
+	for _, s := range segs {
+		if remaining <= 0 {
+			break
+		}
+		text := sanitizeControls(s.text)
+		if ansi.StringWidth(text) > remaining {
+			text = ansi.Truncate(text, remaining, "")
+		}
+		if text == "" {
+			continue
+		}
+		remaining -= ansi.StringWidth(text)
+		// Merge runs that share a style so the row emits one SGR pair per color
+		// change rather than one per segment.
+		if pending.text != "" && pending.fg == s.fg && pending.bold == s.bold {
+			pending.text += text
+			continue
+		}
+		flush()
+		pending = rowSegment{text: text, fg: s.fg, bold: s.bold}
+	}
+	flush()
+	if remaining > 0 {
+		b.WriteString(base.Render(strings.Repeat(" ", remaining)))
+	}
+	return b.String()
 }
 
 func formatItemRow(it listItem, selected bool, width int, t *treeState, label string, active bool) string {
@@ -148,32 +227,39 @@ func formatSessionRow(s tmux.Session, expanded, selected bool, width int, label 
 
 	ago := timeAgo(s.Created)
 
-	icon, iconColor := commandIconPlain(s.ActiveCommand)
-	var styledIcon string
-	if iconColor != "" {
-		styledIcon = " " + lipgloss.NewStyle().Foreground(lipgloss.Color(iconColor)).Render(icon)
-	}
-
 	// Bold the session name on non-selected rows. The selected row gets its bold
-	// treatment from the whole-row style below, so leave the name plain there to
-	// avoid double-wrapping. Pad the name manually (instead of %-18s) because fmt
-	// counts the embedded ANSI bytes as characters, which would break alignment.
-	nameField := fmt.Sprintf("%-*s", maxSessionNameDisplay, name)
+	// treatment from the base style below, so leave the name plain there to avoid
+	// double-wrapping. Pad the name with its own segment rather than %-18s because
+	// the field width has to be measured in cells, not bytes.
+	nameSeg := rowSegment{text: name}
 	if !selected {
-		pad := strings.Repeat(" ", maxSessionNameDisplay-ansi.StringWidth(name))
-		nameField = lipgloss.NewStyle().Bold(true).Foreground(colorSessionName).Render(name) + pad
+		nameSeg.fg = colorSessionName
+		nameSeg.bold = true
+	}
+	pad := maxSessionNameDisplay - ansi.StringWidth(name)
+	if pad < 0 {
+		pad = 0
 	}
 
-	text := fmt.Sprintf("%s %s %s %s", chevron, status, nameField, ago)
-	text += styledIcon
-	extraWidth := 0
-	if iconColor != "" {
-		extraWidth = 1
+	segs := []rowSegment{
+		{text: fmt.Sprintf("%s %s ", chevron, status)},
+		nameSeg,
+		{text: strings.Repeat(" ", pad) + " " + ago},
 	}
-	row := padOrTruncate(text, width-extraWidth)
+
+	rowWidth := width
+	if icon, iconColor := commandIconPlain(s.ActiveCommand); iconColor != "" {
+		segs = append(segs,
+			rowSegment{text: " "},
+			rowSegment{text: icon, fg: lipgloss.Color(iconColor)},
+		)
+		// Ambiguous-width icons (✦ etc.) render as 2 cells in most terminals but
+		// ansi.StringWidth reports 1, so hand the row one cell back.
+		rowWidth--
+	}
 
 	base := rowBaseStyle(selected, lipgloss.Color("#9CA3AF"))
-	return styleRow(row, base, label, false)
+	return renderRow(segs, base, rowWidth, label, false)
 }
 
 func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool, width int, t *treeState, label string, active bool) string {
@@ -190,22 +276,22 @@ func formatWindowRow(sessionName string, w *tmux.Window, expanded, selected bool
 	info, isClaude := windowClaudeRollup(panes, t.claudeCache)
 
 	// Color the window name claude-orange when the window runs claude, but only
-	// on non-selected rows — the selected row's whole-row style takes over.
-	name := w.Name
+	// on non-selected rows — the selected row's cursor color takes over.
+	nameSeg := rowSegment{text: w.Name}
 	if isClaude && !selected {
-		name = lipgloss.NewStyle().Foreground(colorClaude).Render(w.Name)
+		nameSeg.fg = colorClaude
 	}
 
-	text := fmt.Sprintf("%s%s %s %d:%s", strings.Repeat(" ", indentWindow), chevron, marker, w.Index, name)
-
+	segs := []rowSegment{
+		{text: fmt.Sprintf("%s%s %s %d:", strings.Repeat(" ", indentWindow), chevron, marker, w.Index)},
+		nameSeg,
+	}
 	if isClaude {
-		text += claudeSuffix(info)
+		segs = append(segs, claudeSuffix(info)...)
 	}
-
-	row := padOrTruncate(text, width)
 
 	base := rowBaseStyle(selected, lipgloss.Color("#9CA3AF"))
-	return styleRow(row, base, label, active)
+	return renderRow(segs, base, width, label, active)
 }
 
 func formatPaneRow(p *tmux.Pane, selected bool, width int, t *treeState) string {
@@ -214,39 +300,40 @@ func formatPaneRow(p *tmux.Pane, selected bool, width int, t *treeState) string 
 		marker = "*"
 	}
 
-	text := fmt.Sprintf("%s%s %d %s", strings.Repeat(" ", indentPane), marker, p.Index, p.Command)
+	segs := []rowSegment{
+		{text: fmt.Sprintf("%s%s %d %s", strings.Repeat(" ", indentPane), marker, p.Index, p.Command)},
+	}
 
 	if info, ok := t.claudeInfo(p.PID); ok && info.State != tmux.ClaudeNone {
-		text += claudeSuffix(info)
+		segs = append(segs, claudeSuffix(info)...)
 	}
-
-	row := padOrTruncate(text, width)
 
 	base := rowBaseStyle(selected, lipgloss.Color("#6B7280"))
-	return styleRow(row, base, "", false)
+	return renderRow(segs, base, width, "", false)
 }
 
-// claudeSuffix renders " <icon> <elapsed>  <recap>" for a Claude pane. The whole
-// row is truncated to width by the caller, so recap is left intact here.
-func claudeSuffix(info tmux.ClaudeInfo) string {
+// claudeSuffix returns the segments for " <icon> <elapsed>  <recap>" on a Claude
+// row. renderRow truncates the row to width, so recap is left intact here.
+func claudeSuffix(info tmux.ClaudeInfo) []rowSegment {
 	icon, color := claudeStateGlyph(info.State)
-	elapsed := ""
-	if !info.Since.IsZero() {
-		elapsed = formatElapsed(time.Since(info.Since))
+	segs := []rowSegment{
+		{text: "  "},
+		{text: icon, fg: color},
 	}
-	styledIcon := lipgloss.NewStyle().Foreground(color).Render(icon)
-	out := "  " + styledIcon
-	if elapsed != "" {
-		out += " " + elapsed
+	if !info.Since.IsZero() {
+		segs = append(segs, rowSegment{text: " " + formatElapsed(time.Since(info.Since))})
 	}
 	recap := info.Recap
 	if info.State == tmux.ClaudeWaiting {
 		recap = "Needs your input"
 	}
 	if recap != "" {
-		out += "  " + lipgloss.NewStyle().Foreground(color).Render(recap)
+		segs = append(segs,
+			rowSegment{text: "  "},
+			rowSegment{text: recap, fg: color},
+		)
 	}
-	return out
+	return segs
 }
 
 // commandIconPlain returns the raw icon and its color for known AI CLIs.

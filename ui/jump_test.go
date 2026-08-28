@@ -728,20 +728,21 @@ func TestMovementRefreshesLabels(t *testing.T) {
 // The dot is not a key you can press, so jump mode must not brighten it.
 // The profile must be forced: lipgloss strips color when stdout is not a TTY,
 // which would make both comparisons below trivially equal and the test vacuous.
-func TestStyleRowKeepsTheInactiveDotMuted(t *testing.T) {
+func TestRenderRowKeepsTheInactiveDotMuted(t *testing.T) {
 	old := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(old)
 
 	base := lipgloss.NewStyle()
-	dotResting := styleRow(" row", base, string(jumpInactive), false)
-	dotActive := styleRow(" row", base, string(jumpInactive), true)
+	segs := []rowSegment{{text: " row"}}
+	dotResting := renderRow(segs, base, 4, string(jumpInactive), false)
+	dotActive := renderRow(segs, base, 4, string(jumpInactive), true)
 	if dotResting != dotActive {
 		t.Errorf("the inactive dot changed with jump mode:\nrest:   %q\nactive: %q", dotResting, dotActive)
 	}
 
-	sResting := styleRow(" row", base, string(jumpReserved), false)
-	sActive := styleRow(" row", base, string(jumpReserved), true)
+	sResting := renderRow(segs, base, 4, string(jumpReserved), false)
+	sActive := renderRow(segs, base, 4, string(jumpReserved), true)
 	if sResting == sActive {
 		t.Errorf("the reserved label should still brighten in jump mode: %q", sActive)
 	}

@@ -20,7 +20,7 @@ const jumpAlphabet = "adfwecvbtyuiopmzghjklnqrx"
 const jumpInactive = '·'
 
 // jumpInactiveLabel is jumpInactive pre-converted to a string, since assignLabels
-// and styleRow each need the string form once per row per frame.
+// and applyJumpLabel each need the string form once per row per frame.
 var jumpInactiveLabel = string(jumpInactive)
 
 // assignLabels walks the flattened item list top-to-bottom and assigns a letter
