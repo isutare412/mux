@@ -150,6 +150,15 @@ AI 세션이 활성화되면 `✦ ◈` 같은 아이콘이 상태바에 표시�
 mux 실행 중에는 tmux 팝업 안을 포함해 마우스 이벤트가 mux로 전달됩니다.
 그동안은 드래그로 터미널 텍스트를 선택할 수 없으므로, `Shift`를 누른 채 드래그하세요.
 
+휠은 화면이 아니라 선택 커서를 움직이므로, macOS의 natural scrolling과 겹치면
+방향이 반대로 느껴집니다. `--invert-scroll`로 뒤집을 수 있습니다:
+
+```bash
+mux --invert-scroll
+mux popup --invert-scroll               # 팝업 일회성 실행
+mux setup-keybind --invert-scroll       # prefix+m 바인딩에 넣어두기
+```
+
 ## 요구사항
 
 - tmux (팝업 모드는 3.2+)

@@ -27,9 +27,27 @@ const (
 	ohMyTmuxSentinel = `# "$@"`
 )
 
+// popupCommand returns the shell command tmux runs inside the popup: the mux
+// binary plus the launch flags that have to survive the hop, since the popup
+// starts a fresh mux process rather than reusing this one.
+func popupCommand(muxPath string, invertScroll bool) string {
+	if invertScroll {
+		return muxPath + " --invert-scroll"
+	}
+	return muxPath
+}
+
+// bindLine returns the tmux config line that opens the popup on prefix + key.
+// It goes straight to display-popup instead of through `mux popup`, so it
+// carries the same flags popupCommand builds.
+func bindLine(key, muxPath string, invertScroll bool) string {
+	return fmt.Sprintf(`bind %s display-popup -E -w %s -h %s "%s"`,
+		key, popupWidth, popupHeight, popupCommand(muxPath, invertScroll))
+}
+
 // OpenPopup opens mux inside a tmux display-popup overlay.
 // Must be called from inside a tmux session.
-func OpenPopup() error {
+func OpenPopup(invertScroll bool) error {
 	if os.Getenv("TMUX") == "" {
 		return fmt.Errorf("mux popup must be run inside a tmux session")
 	}
@@ -51,7 +69,7 @@ func OpenPopup() error {
 		"-E",
 		"-w", popupWidth,
 		"-h", popupHeight,
-		muxPath,
+		popupCommand(muxPath, invertScroll),
 	)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -137,7 +155,7 @@ func isOhMyTmux(confPath string) bool {
 // inserted before the `# "$@"` sentinel (oh-my-tmux marks everything below
 // that line as off-limits). Any prior corrupt entry left in .tmux.conf by
 // older mux versions is removed in the same pass.
-func SetupKeybind(key string) error {
+func SetupKeybind(key string, invertScroll bool) error {
 	muxPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to find mux executable: %w", err)
@@ -147,11 +165,11 @@ func SetupKeybind(key string) error {
 	if err != nil {
 		return err
 	}
-	bindLine := fmt.Sprintf(`bind %s display-popup -E -w %s -h %s "%s"`, key, popupWidth, popupHeight, muxPath)
+	line := bindLine(key, muxPath, invertScroll)
 
 	if isOhMyTmux(confPath) {
 		localPath := findTmuxConfLocal(confPath)
-		if err := writeBindToLocal(localPath, bindLine); err != nil {
+		if err := writeBindToLocal(localPath, line); err != nil {
 			return err
 		}
 		// Best-effort cleanup of any corrupt line older mux versions may have
@@ -159,7 +177,7 @@ func SetupKeybind(key string) error {
 		// on the file that matters.
 		removed, _ := stripMarkerLines(confPath)
 
-		fmt.Printf("Detected oh-my-tmux. Added to %s:\n  %s\n\n", localPath, bindLine)
+		fmt.Printf("Detected oh-my-tmux. Added to %s:\n  %s\n\n", localPath, line)
 		if removed {
 			fmt.Printf("Removed prior mux entry from %s (was breaking oh-my-tmux's heredoc).\n\n", confPath)
 		}
@@ -168,10 +186,10 @@ func SetupKeybind(key string) error {
 		return nil
 	}
 
-	if err := upsertBindLine(confPath, bindLine, true); err != nil {
+	if err := upsertBindLine(confPath, line, true); err != nil {
 		return err
 	}
-	fmt.Printf("Added to %s:\n  %s\n\n", confPath, bindLine)
+	fmt.Printf("Added to %s:\n  %s\n\n", confPath, line)
 	fmt.Printf("Reload tmux config:\n  tmux source-file %s\n\n", confPath)
 	fmt.Printf("Then press: prefix + %s (default prefix: Ctrl+b)\n", key)
 	return nil

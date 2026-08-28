@@ -171,6 +171,15 @@ Mouse events go to mux while it is running, including inside a tmux popup. That
 takes drag-to-select away from the terminal for as long as mux is up — hold
 `Shift` while dragging to select text as usual.
 
+The wheel moves a selection, not a viewport, so with macOS natural scrolling
+the cursor runs the wrong way. Launch with `--invert-scroll` to flip it:
+
+```bash
+mux --invert-scroll
+mux popup --invert-scroll               # one-off popup
+mux setup-keybind --invert-scroll       # bake it into the prefix+m binding
+```
+
 ## Requirements
 
 - tmux (popup mode requires 3.2+)

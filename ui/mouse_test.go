@@ -11,9 +11,9 @@ import (
 
 // listModel returns a sized model holding one session with two windows.
 // items: [0] session mux, [1] window 0 nvim, [2] window 1 claude, [3] session dotfiles
-func listModel(t *testing.T, width, height int) Model {
+func listModel(t *testing.T, width, height int, opts ...Option) Model {
 	t.Helper()
-	m := NewModel()
+	m := NewModel(opts...)
 	m = drive(m, tea.WindowSizeMsg{Width: width, Height: height})
 	m = drive(m, sessionsLoadedMsg{sessions: []tmux.Session{{Name: "mux"}, {Name: "dotfiles"}}})
 	m = drive(m, windowsLoadedMsg{sessionName: "mux", windows: []tmux.Window{
@@ -371,5 +371,31 @@ func TestClickLeavesJumpMode(t *testing.T) {
 	}
 	if m.cursor != 3 {
 		t.Errorf("cursor = %d, want 3", m.cursor)
+	}
+}
+
+func TestInvertedWheelWalksTheCursorTheOtherWay(t *testing.T) {
+	m := listModel(t, 100, 30, WithInvertedScroll())
+	m.cursor = 2
+
+	m = drive(m, wheel(10, 4, tea.MouseButtonWheelDown))
+	if m.cursor != 1 {
+		t.Errorf("cursor after wheel down = %d, want 1", m.cursor)
+	}
+
+	m = drive(m, wheel(10, 4, tea.MouseButtonWheelUp))
+	if m.cursor != 2 {
+		t.Errorf("cursor after wheel up = %d, want 2", m.cursor)
+	}
+}
+
+func TestInvertedWheelStopsAtTheEnds(t *testing.T) {
+	m := listModel(t, 100, 30, WithInvertedScroll())
+	m.cursor = 0
+
+	m = drive(m, wheel(10, 4, tea.MouseButtonWheelDown))
+
+	if m.cursor != 0 {
+		t.Errorf("cursor = %d, want 0 (already at the top)", m.cursor)
 	}
 }

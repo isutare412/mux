@@ -13,25 +13,39 @@ import (
 
 var version = "dev"
 
+// invertScrollFlag is the flag name shared by every command that has to pass
+// the setting on to the mux that ends up drawing the list.
+const invertScrollFlag = "invert-scroll"
+
+const invertScrollHelp = "Invert mouse wheel direction (for natural scrolling)"
+
 func main() {
+	var invertScroll bool
+
 	rootCmd := &cobra.Command{
 		Use:     "mux",
 		Short:   "TUI tmux session manager",
 		Version: version,
-		RunE:    runTUI,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTUI(invertScroll)
+		},
 		// Suppress cobra's default completion and help subcommands
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 	}
 	rootCmd.SetVersionTemplate("mux {{.Version}}\n")
+	rootCmd.Flags().BoolVar(&invertScroll, invertScrollFlag, false, invertScrollHelp)
 
+	var popupInvertScroll bool
 	popupCmd := &cobra.Command{
 		Use:   "popup",
 		Short: "Open mux as a tmux popup overlay",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return tmux.OpenPopup()
+			return tmux.OpenPopup(popupInvertScroll)
 		},
 	}
+	popupCmd.Flags().BoolVar(&popupInvertScroll, invertScrollFlag, false, invertScrollHelp)
 
+	var keybindInvertScroll bool
 	setupKeybindCmd := &cobra.Command{
 		Use:   "setup-keybind [key]",
 		Short: fmt.Sprintf("Add popup keybinding to tmux config (default: %s)", tmux.DefaultBindKey),
@@ -41,9 +55,11 @@ func main() {
 			if len(args) > 0 {
 				key = args[0]
 			}
-			return tmux.SetupKeybind(key)
+			return tmux.SetupKeybind(key, keybindInvertScroll)
 		},
 	}
+	setupKeybindCmd.Flags().BoolVar(&keybindInvertScroll, invertScrollFlag, false,
+		invertScrollHelp+" in the keybinding this writes")
 
 	statusCmd := &cobra.Command{
 		Use:   "status",
@@ -94,11 +110,16 @@ func joinWith(parts []string, sep string) string {
 	return result
 }
 
-func runTUI(cmd *cobra.Command, args []string) error {
+func runTUI(invertScroll bool) error {
+	var opts []ui.Option
+	if invertScroll {
+		opts = append(opts, ui.WithInvertedScroll())
+	}
+
 	// WithMouseCellMotion turns on button-event tracking so the list responds to
 	// clicks and the wheel. It also takes drag-to-select away from the terminal
 	// while mux is up; hold shift to select text as before.
-	p := tea.NewProgram(ui.NewModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
+	p := tea.NewProgram(ui.NewModel(opts...), tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	result, err := p.Run()
 	if err != nil {

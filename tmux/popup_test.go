@@ -301,3 +301,39 @@ func TestStripMarkerLines_PreservesUserCustomBind(t *testing.T) {
 		t.Error("user-authored bind should not be touched")
 	}
 }
+
+func TestPopupCommand(t *testing.T) {
+	tests := []struct {
+		name         string
+		invertScroll bool
+		want         string
+	}{
+		{name: "plain", invertScroll: false, want: "/usr/local/bin/mux"},
+		{name: "inverted scroll", invertScroll: true, want: "/usr/local/bin/mux --invert-scroll"},
+	}
+	for _, tt := range tests {
+		if got := popupCommand("/usr/local/bin/mux", tt.invertScroll); got != tt.want {
+			t.Errorf("%s: popupCommand = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+// prefix + m runs the popup straight from the bind line, never through
+// `mux popup`, so the flag has to reach the inner mux through this string too.
+func TestBindLineCarriesTheInvertScrollFlag(t *testing.T) {
+	line := bindLine("m", "/usr/local/bin/mux", true)
+
+	if !strings.Contains(line, "--invert-scroll") {
+		t.Errorf("bind line lost the flag: %q", line)
+	}
+	if !strings.Contains(line, `"/usr/local/bin/mux --invert-scroll"`) {
+		t.Errorf("the command must stay one quoted argument for display-popup: %q", line)
+	}
+}
+
+func TestBindLineWithoutOptions(t *testing.T) {
+	want := `bind m display-popup -E -w 85% -h 80% "/usr/local/bin/mux"`
+	if got := bindLine("m", "/usr/local/bin/mux", false); got != want {
+		t.Errorf("bindLine = %q, want %q", got, want)
+	}
+}

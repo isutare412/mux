@@ -75,6 +75,7 @@ type Model struct {
 	tokenSession   string           // session name the token cache belongs to
 	lastClickRow   int              // row the previous mouse press landed on (-1 = none)
 	lastClickAt    time.Time        // when that press arrived, for double-click detection
+	invertScroll   bool             // wheel walks the cursor the other way
 }
 
 type tickMsg time.Time
@@ -191,9 +192,25 @@ func loadClaudeInfo(panePID int) tea.Cmd {
 	}
 }
 
+// Option configures a Model at construction. Launch-time settings arrive this
+// way because nothing at runtime can infer them.
+type Option func(*Model)
+
+// WithInvertedScroll flips the wheel: rolling up walks the cursor down. The
+// list moves a selection rather than a viewport, so on a pointing device that
+// already inverts the wheel — macOS natural scrolling — the two conventions
+// cancel out and the cursor appears to run away from the finger.
+func WithInvertedScroll() Option {
+	return func(m *Model) { m.invertScroll = true }
+}
+
 // NewModel returns a new Model with default settings.
-func NewModel() Model {
-	return Model{tree: newTreeState(), focusWindow: -1, lastClickRow: -1}
+func NewModel(opts ...Option) Model {
+	m := Model{tree: newTreeState(), focusWindow: -1, lastClickRow: -1}
+	for _, opt := range opts {
+		opt(&m)
+	}
+	return m
 }
 
 func (m Model) Init() tea.Cmd {

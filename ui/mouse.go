@@ -67,7 +67,8 @@ func chevronColumn(it listItem) int {
 // same row within doubleClickInterval attaches — the same destination enter
 // would pick. A press on the row's chevron toggles that row's expansion
 // instead, so it never attaches. The wheel walks the cursor one row at a time
-// while the pointer is over the list. Everything else is ignored: motion and
+// while the pointer is over the list, in whichever direction --invert-scroll
+// asked for. Everything else is ignored: motion and
 // release events (a physical click sends both, and only the press may count),
 // coordinates over the preview, and every event that arrives while a modal
 // overlay owns the screen.
@@ -86,17 +87,30 @@ func (m Model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
-		if m.overList(msg.X, msg.Y) && m.cursor > 0 {
-			return m, m.moveCursor(m.cursor - 1)
-		}
+		return m.wheel(msg.X, msg.Y, -1)
 	case tea.MouseButtonWheelDown:
-		if m.overList(msg.X, msg.Y) && m.cursor < len(m.items)-1 {
-			return m, m.moveCursor(m.cursor + 1)
-		}
+		return m.wheel(msg.X, msg.Y, 1)
 	case tea.MouseButtonLeft:
 		return m.pressRow(msg.X, msg.Y)
 	}
 	return m, nil
+}
+
+// wheel walks the cursor step rows from a wheel event at (x, y), or the other
+// way when mux was launched with --invert-scroll. It stops at either end of
+// the list rather than wrapping.
+func (m Model) wheel(x, y, step int) (tea.Model, tea.Cmd) {
+	if !m.overList(x, y) {
+		return m, nil
+	}
+	if m.invertScroll {
+		step = -step
+	}
+	idx := m.cursor + step
+	if idx < 0 || idx >= len(m.items) {
+		return m, nil
+	}
+	return m, m.moveCursor(idx)
 }
 
 // pressRow handles a left press at a screen coordinate.
