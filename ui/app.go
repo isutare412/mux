@@ -23,6 +23,10 @@ const (
 	// Timing
 	refreshInterval = 500 * time.Millisecond
 
+	// doubleClickInterval is how long a second press on the same row still
+	// counts as a double click.
+	doubleClickInterval = 400 * time.Millisecond
+
 	// Display limits
 	maxSessionNameDisplay = 18
 	maxPathDisplay        = 35
@@ -69,6 +73,8 @@ type Model struct {
 	previewKey     previewKey       // (session, window, pane) the cache belongs to
 	tokenUsage     *tmux.TokenUsage // cached token usage for current AI session
 	tokenSession   string           // session name the token cache belongs to
+	lastClickRow   int              // row the previous mouse press landed on (-1 = none)
+	lastClickAt    time.Time        // when that press arrived, for double-click detection
 }
 
 type tickMsg time.Time
@@ -187,7 +193,7 @@ func loadClaudeInfo(panePID int) tea.Cmd {
 
 // NewModel returns a new Model with default settings.
 func NewModel() Model {
-	return Model{tree: newTreeState(), focusWindow: -1}
+	return Model{tree: newTreeState(), focusWindow: -1, lastClickRow: -1}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -200,6 +206,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
+
+	case tea.MouseMsg:
+		return m.updateMouse(msg)
 
 	case tickMsg:
 		cmds := []tea.Cmd{loadSessions, tick()}
@@ -771,6 +780,54 @@ func (m Model) View() string {
 	}
 }
 
+// extraBar returns the line drawn between the title and the panels: the filter
+// input, the kill confirmation, or the reminder that a filter is active. It is
+// "" when the panels sit directly under the title. panelGeometry consults it,
+// so the mouse hit test shifts by the same line the renderer does.
+func (m Model) extraBar() string {
+	switch {
+	case m.mode == modeFilter:
+		return m.filterMod.View()
+	case m.mode == modeConfirmKill:
+		return m.confirmKillMod.View()
+	case m.filterText != "":
+		return helpStyle.Render(fmt.Sprintf("filter: %s (esc clear)", m.filterText))
+	}
+	return ""
+}
+
+// panelGeometry describes where the list and preview panels land on screen.
+// viewMain renders from it and the mouse hit test resolves clicks through it,
+// so a click always picks the row the pointer is actually over.
+type panelGeometry struct {
+	top          int // screen row of the panels' top border
+	height       int // panel height, both borders included
+	listWidth    int
+	previewWidth int
+}
+
+func (m Model) panelGeometry() panelGeometry {
+	// Chrome: title(1+margin1) + help(1) + extraBar(0 or 1)
+	chrome, top := 3, 1
+	if m.extraBar() != "" {
+		chrome++
+		top++
+	}
+
+	height := m.height - chrome
+	if height < minPanelHeight {
+		height = minPanelHeight
+	}
+
+	listWidth := m.width * listWidthPercent / listWidthDenom
+	return panelGeometry{
+		top:          top,
+		height:       height,
+		listWidth:    listWidth,
+		previewWidth: m.width - listWidth,
+	}
+}
+
 func (m Model) viewMain() string {
 	// Title — count sessions only, not windows/panes
 	count := fmt.Sprintf("(%d)", len(m.filtered))
@@ -780,33 +837,12 @@ func (m Model) viewMain() string {
 	help := renderHelp(m.mode, m.reservedHint())
 
 	// Filter / confirm bar
-	var extraBar string
-	if m.mode == modeFilter {
-		extraBar = m.filterMod.View()
-	} else if m.mode == modeConfirmKill {
-		extraBar = m.confirmKillMod.View()
-	} else if m.filterText != "" {
-		extraBar = helpStyle.Render(fmt.Sprintf("filter: %s (esc clear)", m.filterText))
-	}
+	extraBar := m.extraBar()
 
-	// Chrome: title(1+margin1) + help(1) + extraBar(0 or 1)
-	chrome := 3
-	if extraBar != "" {
-		chrome++
-	}
+	g := m.panelGeometry()
 
-	// Panel height = total height for both borders + content
-	panelHeight := m.height - chrome
-	if panelHeight < minPanelHeight {
-		panelHeight = minPanelHeight
-	}
-
-	// Layout: list on left, preview on right
-	listWidth := m.width * listWidthPercent / listWidthDenom
-	previewWidth := m.width - listWidth
-
-	// Render both panels (each returns exactly panelHeight lines)
-	list := renderListView(m.items, m.cursor, m.filterText, &m.tree, listWidth, panelHeight, m.labels, m.mode == modeJump)
+	// Render both panels (each returns exactly g.height lines)
+	list := renderListView(m.items, m.cursor, m.filterText, &m.tree, g.listWidth, g.height, m.labels, m.mode == modeJump)
 
 	currentItem := m.currentItem()
 	currentSession := m.currentSession()
@@ -818,7 +854,7 @@ func (m Model) viewMain() string {
 	if currentSession != nil && m.tokenSession == currentSession.Name {
 		tokenUsage = m.tokenUsage
 	}
-	preview := renderPreview(currentItem, cachedContent, previewWidth, panelHeight, tokenUsage)
+	preview := renderPreview(currentItem, cachedContent, g.previewWidth, g.height, tokenUsage)
 
 	// Join line-by-line for exact alignment
 	content := joinHorizontalFixed(list, preview)

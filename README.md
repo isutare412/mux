@@ -42,7 +42,7 @@ Press one key to summon mux on top of whatever you're doing — even mid-convers
 ![Popup mode](assets/popup.gif)
 
 ### Vim-style navigation
-`j`/`k` to browse, `/` to filter, `Enter` to attach. No mouse needed.
+`j`/`k` to browse, `/` to filter, `Enter` to attach — the keyboard alone gets you anywhere. A mouse works too: click a row to preview it, double-click to attach.
 
 ## Quick Start
 
@@ -157,6 +157,19 @@ Pair with [skimd](https://github.com/lunemis/skimd) to review AI-generated markd
 | `/` | Filter sessions by name or path |
 | `Esc` | Clear filter / cancel |
 | `q` | Quit |
+
+### Mouse
+
+| Action | Result |
+|---|---|
+| Click a row | Select it and show its preview |
+| Double-click a row | Attach |
+| Click the `▶`/`▼` chevron | Expand / collapse that row |
+| Wheel over the list | Move the cursor |
+
+Mouse events go to mux while it is running, including inside a tmux popup. That
+takes drag-to-select away from the terminal for as long as mux is up — hold
+`Shift` while dragging to select text as usual.
 
 ## Requirements
 

@@ -16,6 +16,18 @@ const (
 	indentPane   = 4
 )
 
+// listScrollOffset returns the index of the first visible row when the cursor
+// sits at cursor and the viewport is rows lines tall. The list scrolls only far
+// enough to keep the cursor on screen, so rows above stay put until they must
+// move. The mouse hit test resolves clicks through the same function, which is
+// why it lives outside the renderer.
+func listScrollOffset(cursor, rows int) int {
+	if cursor >= rows {
+		return cursor - rows + 1
+	}
+	return 0
+}
+
 // renderListView renders the flattened tree (sessions + expanded windows + panes).
 // Items must already be flattened by the caller via flatten().
 func renderListView(items []listItem, cursor int, filter string, t *treeState, width, height int, labels []string, jumpActive bool) string {
@@ -40,10 +52,7 @@ func renderListView(items []listItem, cursor int, filter string, t *treeState, w
 		return drawBorder(content, width, innerHeight)
 	}
 
-	offset := 0
-	if cursor >= innerHeight {
-		offset = cursor - innerHeight + 1
-	}
+	offset := listScrollOffset(cursor, innerHeight)
 
 	lines := make([]string, innerHeight)
 	for i := 0; i < innerHeight; i++ {

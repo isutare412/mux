@@ -95,7 +95,10 @@ func joinWith(parts []string, sep string) string {
 }
 
 func runTUI(cmd *cobra.Command, args []string) error {
-	p := tea.NewProgram(ui.NewModel(), tea.WithAltScreen())
+	// WithMouseCellMotion turns on button-event tracking so the list responds to
+	// clicks and the wheel. It also takes drag-to-select away from the terminal
+	// while mux is up; hold shift to select text as before.
+	p := tea.NewProgram(ui.NewModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	result, err := p.Run()
 	if err != nil {
